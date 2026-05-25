@@ -2,17 +2,18 @@ from IPython.display import HTML, display
 
 from params.params import SensorType
 
-def visualize_population(population):
+def visualize_population(population, max_display=5):
     sensor_colors = {
         SensorType.LIDAR_16_CH.value: "#1f77b4",
         SensorType.LIDAR_32_CH.value: "#ff7f0e",
         SensorType.SOLID_STATE.value: "#2ca02c",
     }
 
-    max_genes = max(len(individual) for individual in population)
+    visible_population = population[:max_display]
+    max_genes = max(len(individual) for individual in visible_population)
     rows = []
 
-    for index, individual in enumerate(population, start=1):
+    for index, individual in enumerate(visible_population, start=1):
         cells = [f'<th>Individual {index}</th>']
 
         for gene in individual:
@@ -31,6 +32,15 @@ def visualize_population(population):
         rows.append('<tr>' + ''.join(cells) + '</tr>')
 
     header = '<tr><th>Individual</th>' + ''.join(f'<th>Sensor {i}</th>' for i in range(1, max_genes + 1)) + '</tr>'
+    summary = ""
+
+    if len(population) > max_display:
+        summary = (
+            f'<div style="margin: 0 0 12px 0; color: #57606a; font-size: 13px;">'
+            f'Showing first {max_display} of {len(population)} individuals.'
+            f'</div>'
+        )
+
     html = f'''
     <style>
       .population-table {{
@@ -53,6 +63,7 @@ def visualize_population(population):
         text-align: center;
       }}
     </style>
+    {summary}
     <table class='population-table'>
       {header}
       {''.join(rows)}
