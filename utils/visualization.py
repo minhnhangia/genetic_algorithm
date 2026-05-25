@@ -4,9 +4,9 @@ from params.params import SensorType
 
 def visualize_population(population):
     sensor_colors = {
-        SensorType.LIDAR_16_CH: "#1f77b4",
-        SensorType.LIDAR_32_CH: "#ff7f0e",
-        SensorType.SOLID_STATE: "#2ca02c",
+        SensorType.LIDAR_16_CH.value: "#1f77b4",
+        SensorType.LIDAR_32_CH.value: "#ff7f0e",
+        SensorType.SOLID_STATE.value: "#2ca02c",
     }
 
     max_genes = max(len(individual) for individual in population)
@@ -16,7 +16,7 @@ def visualize_population(population):
         cells = [f'<th>Individual {index}</th>']
 
         for gene in individual:
-            color = sensor_colors[gene.sensor_type]
+            color = sensor_colors[gene.sensor_type.value]
             cells.append(
                 f'<td style="border-left: 6px solid {color}; background: {color}22;">'
                 f'<div style="font-weight: 700; margin-bottom: 4px;">{gene.sensor_type.name}</div>'

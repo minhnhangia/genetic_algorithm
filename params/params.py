@@ -13,6 +13,8 @@ class Gene:
     pitch: int
     roll: int
 
-VALID_NODE_IDS = list(range(0, 200))
+MAX_SENSORS_PER_INDIVIDUAL : int = 4
 
-POPULATION_SIZE = 100
+VALID_NODE_IDS : list[int] = list(range(0, 200))
+
+POPULATION_SIZE : int = 100
