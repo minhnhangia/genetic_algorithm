@@ -1,5 +1,5 @@
-from params.params import Gene
-import params.sensors as sensors
+from .params import Gene
+from . import sensors as sensors
 
 # Seeding a Population
 # Initializes a population containing expert seeds, filling the rest 
