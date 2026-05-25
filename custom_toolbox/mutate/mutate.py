@@ -30,8 +30,8 @@ def mutate_sensor_layout(individual):
         target_gene = random.choice(individual)
         
         # Add Gaussian noise (mean 0, std dev 5 degrees)
-        target_gene.pitch += random.gauss(0, 5.0)
-        target_gene.roll += random.gauss(0, 5.0)
+        target_gene.pitch += int(round(random.gauss(0, 5.0)))
+        target_gene.roll += int(round(random.gauss(0, 5.0)))
         
         # Clip to mechanical bounds
         target_gene.pitch = max(-90.0, min(90.0, target_gene.pitch))
