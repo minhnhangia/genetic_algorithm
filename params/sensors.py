@@ -14,28 +14,36 @@ class Sensor:
     fov_horizontal_deg: float
     fov_vertical_deg: float
     range_m: float
+    vertical_channels: int
+    horizontal_res_deg: float
 
 
-DEFAULT_SENSORS = [
-    Sensor(
+SENSOR_CATALOG = {
+    SensorType.LIDAR_16_CH: Sensor(
         sensor_type=SensorType.LIDAR_16_CH,
         price=399.0,
         fov_horizontal_deg=360.0,
         fov_vertical_deg=30.0,
         range_m=100.0,
+        vertical_channels=16,
+        horizontal_res_deg=0.2,
     ),
-    Sensor(
+    SensorType.LIDAR_32_CH: Sensor(
         sensor_type=SensorType.LIDAR_32_CH,
-        price=799.0,
+        price=799.0, 
         fov_horizontal_deg=360.0,
         fov_vertical_deg=40.0,
         range_m=120.0,
+        vertical_channels=32,
+        horizontal_res_deg=0.1,
     ),
-    Sensor(
+    SensorType.SOLID_STATE: Sensor(
         sensor_type=SensorType.SOLID_STATE,
-        price=1299.0,
+        price=299.0,
         fov_horizontal_deg=120.0,
         fov_vertical_deg=45.0,
         range_m=80.0,
+        vertical_channels=1, 
+        horizontal_res_deg=0.1,
     ),
-]
+}
