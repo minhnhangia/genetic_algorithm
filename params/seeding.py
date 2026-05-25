@@ -1,4 +1,5 @@
-from params.params import Gene, SensorType
+from params.params import Gene
+from params.sensors import DEFAULT_SENSORS
 
 # Seeding a Population
 # Initializes a population containing expert seeds, filling the rest 
@@ -10,10 +11,10 @@ from params.params import Gene, SensorType
 # Each seed is a list of Gene objects and will be wrapped in creator.Individual.
 SEED_INDIVIDUALS = [
     [
-        Gene(sensor_type=SensorType.LIDAR_16_CH, node_id=5, pitch=0, roll=0),
+        Gene(sensor=DEFAULT_SENSORS[0], node_id=5, pitch=0, roll=0),
     ],
     [
-        Gene(sensor_type=SensorType.SOLID_STATE, node_id=42, pitch=10, roll=-15),
-        Gene(sensor_type=SensorType.LIDAR_32_CH, node_id=99, pitch=-5, roll=20),
+        Gene(sensor=DEFAULT_SENSORS[2], node_id=42, pitch=10, roll=-15),
+        Gene(sensor=DEFAULT_SENSORS[1], node_id=99, pitch=-5, roll=20),
     ],
 ]

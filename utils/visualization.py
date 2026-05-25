@@ -1,12 +1,11 @@
 from IPython.display import HTML, display
 
-from params.params import SensorType
 
 def visualize_population(population, max_display=5):
     sensor_colors = {
-        SensorType.LIDAR_16_CH.value: "#1f77b4",
-        SensorType.LIDAR_32_CH.value: "#ff7f0e",
-        SensorType.SOLID_STATE.value: "#2ca02c",
+        1: "#1f77b4",
+        2: "#ff7f0e",
+        3: "#2ca02c",
     }
 
     visible_population = population[:max_display]
@@ -17,10 +16,13 @@ def visualize_population(population, max_display=5):
         cells = [f'<th>Individual {index}</th>']
 
         for gene in individual:
-            color = sensor_colors[gene.sensor_type.value]
+            color = sensor_colors[gene.sensor.sensor_type.value]
             cells.append(
                 f'<td style="border-left: 6px solid {color}; background: {color}22;">'
-                f'<div style="font-weight: 700; margin-bottom: 4px;">{gene.sensor_type.name}</div>'
+                f'<div style="font-weight: 700; margin-bottom: 4px;">{gene.sensor.sensor_type.name}</div>'
+                # f'<div>price ${gene.sensor.price:,.2f}</div>'
+                # f'<div>FOV H {gene.sensor.fov_horizontal_deg}°, FOV V {gene.sensor.fov_vertical_deg}°</div>'
+                # f'<div>range {gene.sensor.range_m} m</div>'
                 f'<div>node {gene.node_id}</div>'
                 f'<div>pitch {gene.pitch}, roll {gene.roll}</div>'
                 f'</td>'
