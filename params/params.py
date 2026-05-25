@@ -15,4 +15,4 @@ class Gene:
 
 VALID_NODE_IDS = list(range(0, 200))
 
-POPULATION_SIZE = 5
+POPULATION_SIZE = 100
