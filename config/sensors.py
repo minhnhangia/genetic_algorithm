@@ -9,6 +9,18 @@ class SensorType(Enum):
 
 @dataclass(frozen=True)
 class Sensor:
+    """
+    Represents a sensor type with its specifications.
+    
+    Attributes:
+        sensor_type: The type of the sensor.
+        price: The price of the sensor.
+        fov_horizontal_deg: The horizontal field of view in degrees.
+        fov_vertical_deg: The vertical field of view in degrees.
+        range_m: The detection range in meters.
+        vertical_channels: The number of vertical channels (for LiDARs).
+        horizontal_res_deg: The horizontal resolution in degrees (for LiDARs).
+    """
     sensor_type: SensorType
     price: float
     fov_horizontal_deg: float

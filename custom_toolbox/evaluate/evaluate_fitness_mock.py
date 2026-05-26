@@ -1,4 +1,6 @@
-def evaluate_individual(individual):
+from config.params import Gene, Population, Individual
+
+def evaluate_individual(individual: Individual) -> tuple[float]:
     """
     Mock evaluation function for the modular ground robot LiDAR layout.
     Returns a single-item tuple representing the fitness score to be maximized.

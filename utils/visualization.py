@@ -1,7 +1,9 @@
 from IPython.display import HTML, display
 
+from config.params import Gene, Population, Individual
 
-def visualize_population(population, max_display=5):
+
+def visualize_population(population: Population, max_display: int = 5) -> None:
     sensor_colors = {
         1: "#1f77b4",
         2: "#ff7f0e",
@@ -24,7 +26,7 @@ def visualize_population(population, max_display=5):
                 # f'<div>FOV H {gene.sensor.fov_horizontal_deg}°, FOV V {gene.sensor.fov_vertical_deg}°</div>'
                 # f'<div>range {gene.sensor.range_m} m</div>'
                 f'<div>node {gene.node_id}</div>'
-                f'<div>pitch {gene.pitch}, roll {gene.roll}</div>'
+                f'<div>pitch {gene.pitch}, roll {gene.roll}, yaw {gene.yaw}</div>'
                 f'</td>'
             )
 

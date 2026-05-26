@@ -1,8 +1,9 @@
 import random
 
 from config import params, sensors
+from config.params import Gene, Population, Individual
 
-def create_gene(assigned_node_id):
+def create_gene(assigned_node_id : int) -> Gene:
     """Generates a single active sensor configuration."""
     sensor = random.choice(list(sensors.SENSOR_CATALOG.values()))
 
@@ -11,11 +12,12 @@ def create_gene(assigned_node_id):
     # If using directional solid-state LiDARs, you may need to swap 'roll' for 'yaw'.
     pitch = random.randint(-90, 90)
     roll = random.randint(-90, 90)
+    yaw = random.randint(-180, 180)
 
-    return params.Gene(sensor=sensor, node_id=assigned_node_id, pitch=pitch, roll=roll)
+    return Gene(sensor=sensor, node_id=assigned_node_id, pitch=pitch, roll=roll, yaw=yaw)
 
 
-def create_individual(icls):
+def create_individual(icls: type[Individual]) -> Individual:
     """Generates an individual with 1 to 4 active sensors."""
     num_sensors = random.randint(1, params.MAX_SENSORS_PER_INDIVIDUAL)
 
@@ -27,7 +29,13 @@ def create_individual(icls):
     # Initialize the DEAP list class with our generated genes.
     return icls(genes)
 
-def create_seeded_population(icls, individual_creator, seed_contents, population_size, shuffle=False):
+def create_seeded_population(
+        icls: type[Individual],
+        individual_creator: callable,
+        seed_contents: list[Individual],
+        population_size: int,
+        shuffle=False
+    ) -> Population:
     """Builds a population from seeded individuals plus random fill."""
     seeded_population = [icls(seed) for seed in seed_contents]
 
