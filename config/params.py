@@ -18,7 +18,7 @@ class Gene:
         yaw: The yaw angle of the sensor in degrees (-180 to +180).
     """
     sensor: Sensor
-    node_id: int
+    node_id: int    # TODO: represent node_id as a graph/mesh
     pitch: int
     roll: int
     yaw: int
@@ -27,4 +27,4 @@ MAX_SENSORS_PER_INDIVIDUAL : int = 4
 
 VALID_NODE_IDS : list[int] = list(range(0, 200))
 
-POPULATION_SIZE : int = 100
+POPULATION_SIZE : int = 1000

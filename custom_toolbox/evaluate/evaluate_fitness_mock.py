@@ -1,49 +1,90 @@
+import math
+
 from config.params import Gene, Population, Individual
 
 def evaluate_individual(individual: Individual) -> tuple[float]:
     """
-    Mock evaluation function for the modular ground robot LiDAR layout.
-    Returns a single-item tuple representing the fitness score to be maximized.
+    Evaluates a LiDAR layout based on spatial coverage, critical redundancy, 
+    orientation viability, and cost.
     """
     # ---------------------------------------------------------
-    # 1. State Weights & Constraints
+    # 1. Weights & Config
     # ---------------------------------------------------------
-    # These dictate the robot's current priorities. 
-    W1_CRIT = 0.4       # Weight for Critical Redundancy (Front/Braking path)
-    W2_COV = 0.4        # Weight for 360-degree Basin Coverage
-    W3_COST = 0.2       # Weight for Financial Penalty
-    MAX_BUDGET = 5000.0 # Absolute budget cap (C_max) for normalization
+    W_COV = 0.45        # Weight for 360-degree coverage
+    W_CRIT = 0.35       # Weight for redundant coverage in critical zones
+    W_COST = 0.20       # Weight for financial cost
+    
+    MAX_BUDGET = 5000.0
+    OPTIMAL_PITCH = -10 # Degrees. Assuming pointing slightly down is ideal for ground robots
+    
+    # Critical Zone Definition (e.g., front of the robot: -45 to +45 degrees)
+    CRIT_ZONE_START = 315
+    CRIT_ZONE_END = 45
 
     # ---------------------------------------------------------
-    # 2. Calculate Financial Penalty (C_norm)
+    # 2. Financial Penalty
     # ---------------------------------------------------------
-    # Sum the price property from the SENSOR_CATALOG via the gene's sensor reference
     total_cost = sum(gene.sensor.price for gene in individual)
-    
-    # Normalize against the max budget to keep the penalty bounded between 0.0 and 1.0
     c_norm = min(total_cost / MAX_BUDGET, 1.0)
 
     # ---------------------------------------------------------
-    # 3. Mock the Geometric Raycasting (Coverage & Redundancy)
+    # 3. Spatial Coverage Mapping (The 360 Array)
     # ---------------------------------------------------------
-    # In production, this block is replaced by your headless raycaster.
-    # It will project vectors from each node onto the S_gnd and S_cyl basins.
+    # Create an array of 360 zeros. Each index represents 1 degree around the robot.
+    # The value at each index will be the number of sensors covering that degree.
+    coverage_map = [0] * 360
     
-    # Mock M_cov (General Coverage): bounded between [0, 1]
-    # Simulating coverage by summing horizontal FOVs. 
-    # (Dividing by 400.0 as a mock threshold where diminishing returns hit)
-    total_fov = sum(gene.sensor.fov_horizontal_deg for gene in individual)
-    m_cov = min(total_fov / 400.0, 1.0) 
-    
-    # Mock M_crit (Critical Redundancy): bounded between [0, 1]
-    # Simulating that more active sensors generally yield higher overlap in critical zones.
-    num_sensors = len(individual)
-    m_crit = min((num_sensors - 1) / 3.0, 1.0) if num_sensors > 1 else 0.0
+    for gene in individual:
+        # Penalize extreme pitch/roll angles. 
+        # A sensor pointing straight into the sky (+90 pitch) provides 0 useful ground coverage.
+        # We simulate this by scaling down its effective FOV.
+        pitch_deviation = abs(gene.pitch - OPTIMAL_PITCH)
+        orientation_penalty = math.cos(math.radians(pitch_deviation))
+        
+        # Ensure penalty doesn't invert the FOV; clamp to [0, 1]
+        orientation_penalty = max(0.0, min(1.0, orientation_penalty))
+        effective_fov = gene.sensor.fov_horizontal_deg * orientation_penalty
+        
+        # Calculate coverage sweep
+        half_fov = effective_fov / 2.0
+        start_angle = int(gene.yaw - half_fov)
+        end_angle = int(gene.yaw + half_fov)
+        
+        # Fill the coverage map, handling 360-degree wrap-around
+        for angle in range(start_angle, end_angle):
+            normalized_angle = (angle + 360) % 360
+            coverage_map[normalized_angle] += 1
 
     # ---------------------------------------------------------
-    # 4. Aggregated Fitness Calculation
+    # 4. Metric Calculations
     # ---------------------------------------------------------
-    fitness_score = (W1_CRIT * m_crit) + (W2_COV * m_cov) - (W3_COST * c_norm)
+    
+    # M_cov: Percentage of the 360 environment covered by at least 1 sensor
+    covered_bins = sum(1 for hits in coverage_map if hits > 0)
+    m_cov = covered_bins / 360.0 
+
+    # M_crit: Redundancy in the critical zone
+    # We want at least 2 sensors covering the front of the robot for redundancy.
+    crit_bins_total = 0
+    crit_bins_redundant = 0
+    
+    # Iterate through the critical zone (handling wrap-around)
+    angle = CRIT_ZONE_START
+    while angle != CRIT_ZONE_END:
+        crit_bins_total += 1
+        if coverage_map[angle] >= 2:  # Redundant if 2 or more hits
+            crit_bins_redundant += 1
+        angle = (angle + 1) % 360
+        
+    m_crit = crit_bins_redundant / float(crit_bins_total) if crit_bins_total > 0 else 0.0
+
+    # ---------------------------------------------------------
+    # 5. Final Aggregation
+    # ---------------------------------------------------------
+    fitness_score = (W_COV * m_cov) + (W_CRIT * m_crit) - (W_COST * c_norm)
+    
+    # Ensure fitness doesn't drop below 0 (for standard roulette wheel selection)
+    fitness_score = max(0.0, fitness_score)
     
     # DEAP STRICT REQUIREMENT: Must return a tuple, even for a single objective.
     # The comma is mandatory!
