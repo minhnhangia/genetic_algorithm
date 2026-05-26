@@ -75,3 +75,30 @@ def visualize_population(population: Population, max_display: int = 5) -> None:
     '''
 
     display(HTML(html))
+
+
+def visualize_evolution(logbook) -> None:
+    import matplotlib
+    if not hasattr(matplotlib.rcParams, '_get'):
+        matplotlib.rcParams._get = matplotlib.rcParams.get
+        
+    # Now you can run your imports and function safely
+    import matplotlib.pyplot as plt
+
+    generations = logbook.select("gen")
+    average_fitness = logbook.select("avg")
+    minimum_fitness = logbook.select("min")
+    maximum_fitness = logbook.select("max")
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(generations, average_fitness, label="Average fitness", linewidth=2)
+    plt.plot(generations, minimum_fitness, label="Minimum fitness", linestyle="--", alpha=0.8)
+    plt.plot(generations, maximum_fitness, label="Maximum fitness", linestyle="--", alpha=0.8)
+    plt.fill_between(generations, minimum_fitness, maximum_fitness, alpha=0.12)
+    plt.title("Evolution of Fitness Over Generations")
+    plt.xlabel("Generation")
+    plt.ylabel("Fitness")
+    plt.grid(True, alpha=0.25)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
