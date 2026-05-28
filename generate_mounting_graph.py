@@ -54,9 +54,9 @@ def generate_ga_graph(
 
     # --- Raycast to remove internal geometry ---
     print("Running raycast occlusion check to remove internal points...")
-    # We offset the ray origin 1mm along the normal to prevent the ray from
+    # We offset the ray origin 5mm along the normal to prevent the ray from
     # immediately colliding with the face it is spawned from.
-    ray_origins = pts_up + (nrm_up * 0.001)
+    ray_origins = pts_up + (nrm_up * 0.005)
     ray_directions = nrm_up
 
     # intersects_any returns True if the ray hits the mesh, False if it escapes to infinity
@@ -96,6 +96,31 @@ def generate_ga_graph(
     return mutation_graph, valid_points
 
 
+def visualize_ga_graph(
+    mesh: trimesh.Trimesh, graph: nx.Graph, node_positions: np.ndarray
+) -> None:
+    print("Visualizing the node graph. Close the window to exit.")
+
+    # Create a point cloud for the nodes.
+    node_cloud = trimesh.points.PointCloud(node_positions, colors=[255, 0, 0, 255])
+
+    # Convert graph edges into line segments so the connectivity is visible.
+    edge_segments = np.array(
+        [[graph.nodes[u]["pos"], graph.nodes[v]["pos"]] for u, v in graph.edges()]
+    )
+    edge_path = trimesh.load_path(edge_segments) if len(edge_segments) else None
+    if edge_path is not None:
+        edge_path.colors = np.tile([180, 180, 180, 60], (len(edge_path.entities), 1))
+
+    mesh.visual.face_colors = [100, 100, 100, 100]
+    scene_items = [mesh, node_cloud]
+    if edge_path is not None:
+        scene_items.append(edge_path)
+
+    scene = trimesh.Scene(scene_items)
+    scene.show(line_settings={"line_width": 1})
+
+
 if __name__ == "__main__":
     robot_mesh = build_robot_surface()
 
@@ -103,16 +128,7 @@ if __name__ == "__main__":
     # point_count: How fine-grained your optimization space is.
     # neighbor_radius: The maximum distance a sensor can "slide" during a mutation.
     ga_graph, node_positions = generate_ga_graph(
-        robot_mesh, point_count=20000, neighbor_radius=0.05
+        robot_mesh, point_count=50000, neighbor_radius=0.05
     )
 
-    # --- VISUALIZATION (Sanity Check) ---
-    print("Visualizing the node graph. Close the window to exit.")
-
-    # Create a point cloud for the nodes
-    pc = trimesh.points.PointCloud(node_positions, colors=[255, 0, 0, 255])  # Red nodes
-
-    # Render the transparent robot mesh + the discrete GA mounting nodes
-    robot_mesh.visual.face_colors = [100, 100, 100, 100]  # Transparent grey
-    scene = trimesh.Scene([robot_mesh, pc])
-    scene.show()
+    visualize_ga_graph(robot_mesh, ga_graph, node_positions)
