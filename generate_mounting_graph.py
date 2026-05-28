@@ -12,25 +12,13 @@ BASE_PKG_DIR = os.path.expanduser(
 CHASSIS_MESH_PATH = os.path.join(
     BASE_PKG_DIR, "meshes/bases/rbkairos/rbkairos_chassis.stl"
 )
-TOP_COVER_MESH_PATH = os.path.join(
-    BASE_PKG_DIR, "meshes/bases/rbkairos/rbkairos_top_cover.stl"
-)
 
 
 def build_robot_surface() -> trimesh.Trimesh:
     print("Loading meshes...")
     chassis: trimesh.Trimesh = trimesh.load_mesh(CHASSIS_MESH_PATH)
-    top_cover: trimesh.Trimesh = trimesh.load_mesh(TOP_COVER_MESH_PATH)
 
-    # --- 2. APPLY KINEMATIC TRANSFORMS ---
-    # The top cover has a joint offset (0.56162) + visual offset (0.0065) = 0.56812
-    transformation_matrix = np.eye(4)
-    transformation_matrix[2, 3] = 0.56162 + 0.0065
-    top_cover.apply_transform(transformation_matrix)
-
-    # --- 3. MERGE GEOMETRY ---
-    # Combine them into a single watertight (or near-watertight) scene
-    combined_mesh: trimesh.Trimesh = trimesh.util.concatenate([chassis, top_cover])
+    combined_mesh: trimesh.Trimesh = chassis
     print(f"Combined mesh created with {len(combined_mesh.faces)} faces.")
     return combined_mesh
 
