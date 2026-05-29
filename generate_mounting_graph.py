@@ -94,56 +94,62 @@ def interactive_crop_points(valid_points, valid_normals):
     print("INSTRUCTIONS:")
     print("1. Press 'K' to lock the view and enter Selection Mode.")
     print(
-        "2. Hold 'Ctrl' + Left Click to draw a polygon around the points you want to KEEP."
+        "2. Hold 'Ctrl' + Left Click to draw a polygon around the points you want to REMOVE."
     )
-    print("3. Press 'C' to crop (delete everything outside the polygon).")
-    print("4. Press 'S' to finalize the selection, then close the window.")
+    print("3. Press 'C' to confirm the selection.")
+    print("4. Press 'S' to finalize and close the window.")
+    print("   Close the window without pressing 'S' to make no changes.")
 
     if len(valid_points) == 0:
-        print("No points available for cropping. Returning original points.")
+        print("No points available. Returning original points.")
         return valid_points, valid_normals
 
-    # Convert your numpy points to an Open3D PointCloud object
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(valid_points)
     pcd.normals = o3d.utility.Vector3dVector(valid_normals)
-
-    # Color them red to match your previous visualizer
     pcd.colors = o3d.utility.Vector3dVector(np.tile([1, 0, 0], (len(valid_points), 1)))
 
     visualizer = o3d.visualization.VisualizerWithEditing()
-    visualizer.create_window(window_name="Open3D Crop Editor")
+    visualizer.create_window(window_name="Select points to REMOVE, then press S")
     visualizer.add_geometry(pcd)
     visualizer.run()
     cropped_geometry = visualizer.get_cropped_geometry()
     visualizer.destroy_window()
 
+    # get_cropped_geometry() returns the points INSIDE the polygon — i.e. the
+    # ones the user selected for removal. We invert: keep everything NOT in
+    # that set by using a KDTree nearest-neighbour lookup on the original array.
     if cropped_geometry is None:
-        print("No crop was saved. Returning original points.")
+        print("No selection was made. Returning original points.")
         return valid_points, valid_normals
 
-    curated_points = np.asarray(cropped_geometry.points)
+    if not isinstance(cropped_geometry, o3d.geometry.PointCloud):
+        print("Unexpected selection result type. Returning original points.")
+        return valid_points, valid_normals
+
+    removed_points = np.asarray(cropped_geometry.points)
+
+    if removed_points.size == 0:
+        print("Empty selection. Returning original points.")
+        return valid_points, valid_normals
+
+    # Identify which original points were inside the polygon.  A 1 µm threshold
+    # absorbs any float precision rounding introduced by Open3D's C++ layer.
+    remove_tree = cKDTree(removed_points)
+    distances, _ = remove_tree.query(valid_points)
+    kept_mask = distances > 1e-6
+
+    curated_points = valid_points[kept_mask]
+    curated_normals = valid_normals[kept_mask]
+
     if curated_points.size == 0:
-        print(
-            "The crop was empty. Returning original points instead of producing an empty graph."
-        )
+        print("All points were selected for removal. Returning original points.")
         return valid_points, valid_normals
 
-    if not cropped_geometry.has_normals():
-        print(
-            "The cropped geometry did not preserve normals. Returning original points."
-        )
-        return valid_points, valid_normals
-
-    curated_normals = np.asarray(cropped_geometry.normals)
-    if curated_normals.shape != curated_points.shape:
-        print(
-            "The cropped geometry normals do not match the selected points. Returning original points."
-        )
-        return valid_points, valid_normals
-
+    removed_count = (~kept_mask).sum()
     print(
-        f"Curation complete. Reduced from {len(valid_points)} to {len(curated_points)} nodes."
+        f"Removed {removed_count} points. "
+        f"Kept {len(curated_points)} of {len(valid_points)} nodes."
     )
     return curated_points, curated_normals
 
