@@ -3,6 +3,7 @@ from enum import Enum
 
 from config.params import Gene, Individual, Population
 from config.params import VALID_NODE_IDS, MAX_SENSORS_PER_INDIVIDUAL
+from config.graph import MOUNTING_GRAPH
 from config.sensors import SENSOR_CATALOG
 from custom_toolbox.initialize import initialize
 
@@ -21,7 +22,7 @@ def mutate_sensor_layout(individual: Individual) -> tuple[Individual]:
     Attribute Mutation (Jitter / Move / Hardware) - 30% Chance per Gene:
     - Applies one of three mutation types to the individual's sensor layout:
         1. ANGLES: Jitter the pitch/roll/yaw of a random sensor within mechanical limits (±90° pitch, ±90° roll, ±180° yaw)
-        2. POSITION: Move a random sensor to a new, unoccupied node while preserving its angles
+        2. POSITION: Slide a sensor to a graph-adjacent neighbor node while preserving its angles (no-op if all neighbors are occupied)
         3. HARDWARE: Swap the sensor type of a random gene for a different model from the catalog, keeping node and angles the same.
     """
     
@@ -58,12 +59,15 @@ def mutate_sensor_layout(individual: Individual) -> tuple[Individual]:
                 gene.yaw = int(round(max(-180, min(180, gene.yaw + random.gauss(0, 5.0)))))
                 
             elif mutation_type == AttributeMutationType.POSITION:
-                # Slide to a new, unoccupied node while preserving angles
+                # Slide to a graph-adjacent neighbor that is not already occupied.
                 occupied_nodes = set(g.node_id for g in individual)
-                available_nodes = list(set(VALID_NODE_IDS) - occupied_nodes)
-                if available_nodes:
-                    new_node = random.choice(available_nodes)
-                    gene.node_id = new_node
+                neighbor_candidates = [
+                    n for n in MOUNTING_GRAPH.neighbors(gene.node_id)
+                    if n not in occupied_nodes
+                ]
+                if neighbor_candidates:
+                    gene.node_id = random.choice(neighbor_candidates)
+                # If all neighbors are occupied or the node is isolated, leave unchanged.
 
             elif mutation_type == AttributeMutationType.HARDWARE:
                 # Swap the sensor out for a different model from the catalog

@@ -1,9 +1,20 @@
+import pickle
+import pathlib
 import trimesh
 import numpy as np
 from scipy.spatial import cKDTree
 import networkx as nx
 import open3d as o3d
 import os
+
+GRAPH_SAVE_PATH = pathlib.Path(__file__).parent / "data" / "mounting_graph.pkl"
+
+
+def save_graph(graph: nx.Graph, path: pathlib.Path = GRAPH_SAVE_PATH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as f:
+        pickle.dump(graph, f, protocol=pickle.HIGHEST_PROTOCOL)
+    print(f"Graph saved to {path}  ({graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges)")
 
 # --- 1. FILE PATHS ---
 # Adjust this base path to point to your local robotnik_description folder
@@ -210,3 +221,4 @@ if __name__ == "__main__":
     )
 
     visualize_ga_graph(robot_mesh, ga_graph, node_positions)
+    save_graph(ga_graph)
