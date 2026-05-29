@@ -90,68 +90,82 @@ def generate_ga_graph(
 
 
 def interactive_crop_points(valid_points, valid_normals):
-    print("Opening Open3D Visualizer...")
     print("INSTRUCTIONS:")
-    print("1. Press 'K' to lock the view and enter Selection Mode.")
-    print(
-        "2. Hold 'Ctrl' + Left Click to draw a polygon around the points you want to REMOVE."
-    )
-    print("3. Press 'C' to confirm the selection.")
-    print("4. Press 'S' to finalize and close the window.")
-    print("   Close the window without pressing 'S' to make no changes.")
+    print("  1. Press 'K' to lock the view and enter Selection Mode.")
+    print("  2. Hold 'Ctrl' + Left Click to draw a polygon around points to REMOVE.")
+    print("  3. Press 'C' to confirm — NOTE: after 'C' only the points being")
+    print("     REMOVED are shown. Press 'S' to apply and open the next round.")
+    print("  4. Close the window WITHOUT pressing 'S' when you are done.")
 
     if len(valid_points) == 0:
         print("No points available. Returning original points.")
         return valid_points, valid_normals
 
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(valid_points)
-    pcd.normals = o3d.utility.Vector3dVector(valid_normals)
-    pcd.colors = o3d.utility.Vector3dVector(np.tile([1, 0, 0], (len(valid_points), 1)))
+    current_points = valid_points
+    current_normals = valid_normals
+    round_num = 1
 
-    visualizer = o3d.visualization.VisualizerWithEditing()
-    visualizer.create_window(window_name="Select points to REMOVE, then press S")
-    visualizer.add_geometry(pcd)
-    visualizer.run()
-    cropped_geometry = visualizer.get_cropped_geometry()
-    visualizer.destroy_window()
+    while True:
+        print(
+            f"\n--- Removal round {round_num} ({len(current_points)} points remaining) ---"
+        )
 
-    # get_cropped_geometry() returns the points INSIDE the polygon — i.e. the
-    # ones the user selected for removal. We invert: keep everything NOT in
-    # that set by using a KDTree nearest-neighbour lookup on the original array.
-    if cropped_geometry is None:
-        print("No selection was made. Returning original points.")
-        return valid_points, valid_normals
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(current_points)
+        pcd.normals = o3d.utility.Vector3dVector(current_normals)
+        pcd.colors = o3d.utility.Vector3dVector(
+            np.tile([1, 0, 0], (len(current_points), 1))
+        )
 
-    if not isinstance(cropped_geometry, o3d.geometry.PointCloud):
-        print("Unexpected selection result type. Returning original points.")
-        return valid_points, valid_normals
+        vis = o3d.visualization.VisualizerWithEditing()
+        vis.create_window(
+            window_name=f"Round {round_num}: select points to REMOVE — close window to finish"
+        )
+        vis.add_geometry(pcd)
+        vis.run()
+        selected = vis.get_cropped_geometry()
+        vis.destroy_window()
 
-    removed_points = np.asarray(cropped_geometry.points)
+        # None means the user closed without pressing S → curation is done.
+        if selected is None:
+            print("Window closed. Finishing curation.")
+            break
 
-    if removed_points.size == 0:
-        print("Empty selection. Returning original points.")
-        return valid_points, valid_normals
+        if not isinstance(selected, o3d.geometry.PointCloud):
+            print("Unexpected selection type. Finishing curation.")
+            break
 
-    # Identify which original points were inside the polygon.  A 1 µm threshold
-    # absorbs any float precision rounding introduced by Open3D's C++ layer.
-    remove_tree = cKDTree(removed_points)
-    distances, _ = remove_tree.query(valid_points)
-    kept_mask = distances > 1e-6
+        # get_cropped_geometry() returns the points INSIDE the polygon, which
+        # are the ones to remove. We keep everything NOT matched by a KDTree
+        # lookup. The 1 µm threshold absorbs any float rounding in O3D's C++ layer.
+        removed_pts = np.asarray(selected.points)
+        if removed_pts.size == 0:
+            print("No points were selected. Finishing curation.")
+            break
 
-    curated_points = valid_points[kept_mask]
-    curated_normals = valid_normals[kept_mask]
+        remove_tree = cKDTree(removed_pts)
+        distances, _ = remove_tree.query(current_points)
+        kept_mask = distances > 1e-6
 
-    if curated_points.size == 0:
-        print("All points were selected for removal. Returning original points.")
-        return valid_points, valid_normals
+        if not kept_mask.any():
+            print(
+                "All remaining points were selected. Reverting this round and finishing."
+            )
+            break
 
-    removed_count = (~kept_mask).sum()
+        removed_count = int((~kept_mask).sum())
+        current_points = current_points[kept_mask]
+        current_normals = current_normals[kept_mask]
+
+        print(f"Removed {removed_count} points. {len(current_points)} remaining.")
+        round_num += 1
+
+    total_removed = len(valid_points) - len(current_points)
     print(
-        f"Removed {removed_count} points. "
-        f"Kept {len(curated_points)} of {len(valid_points)} nodes."
+        f"\nCuration complete. Removed {total_removed} points total. "
+        f"Kept {len(current_points)} of {len(valid_points)} nodes."
     )
-    return curated_points, curated_normals
+    return current_points, current_normals
 
 
 def visualize_ga_graph(
