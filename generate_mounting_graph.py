@@ -14,7 +14,10 @@ def save_graph(graph: nx.Graph, path: pathlib.Path = GRAPH_SAVE_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
         pickle.dump(graph, f, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"Graph saved to {path}  ({graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges)")
+    print(
+        f"Graph saved to {path}  ({graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges)"
+    )
+
 
 # --- 1. FILE PATHS ---
 # Adjust this base path to point to your local robotnik_description folder
@@ -69,7 +72,7 @@ def generate_ga_graph(
     valid_normals = nrm_up[exterior_mask]
 
     # OFFSET: Move points 5cm (0.05 meters) outward from the true exterior surface
-    valid_points = valid_points + (valid_normals * 0.05)
+    valid_points = valid_points + (valid_normals * 0.01)
 
     filtered_points, filtered_normals = interactive_crop_points(
         valid_points, valid_normals

@@ -16,10 +16,28 @@ _n = VALID_NODE_IDS
 # Each seed is a list of Gene objects and will be wrapped in creator.Individual.
 SEED_INDIVIDUALS = [
     [
-        Gene(sensor=sensors.SENSOR_CATALOG[sensors.SensorType.LIDAR_16_CH], node_id=_n[0], pitch=0, roll=0, yaw=0),
+        Gene(
+            sensor=sensors.SENSOR_CATALOG[sensors.SensorType.LIDAR_16_CH],
+            node_id=_n[0],
+            pitch=0,
+            roll=0,
+            yaw=0,
+        ),
     ],
     [
-        Gene(sensor=sensors.SENSOR_CATALOG[sensors.SensorType.SOLID_STATE], node_id=_n[1], pitch=10, roll=-15, yaw=0),
-        Gene(sensor=sensors.SENSOR_CATALOG[sensors.SensorType.LIDAR_32_CH], node_id=_n[2], pitch=-5, roll=20, yaw=0),
+        Gene(
+            sensor=sensors.SENSOR_CATALOG[sensors.SensorType.SOLID_STATE],
+            node_id=_n[1],
+            pitch=10,
+            roll=-15,
+            yaw=0,
+        ),
+        Gene(
+            sensor=sensors.SENSOR_CATALOG[sensors.SensorType.LIDAR_32_CH],
+            node_id=_n[2],
+            pitch=-5,
+            roll=20,
+            yaw=0,
+        ),
     ],
 ]

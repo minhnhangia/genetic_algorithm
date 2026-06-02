@@ -1,17 +1,18 @@
 from dataclasses import dataclass
 from enum import Enum
 
+
 class SensorType(Enum):
-    LIDAR_16_CH = 1     # e.g., 16-channel spinning LiDAR
-    LIDAR_32_CH = 2     # e.g., 32-channel spinning LiDAR
-    SOLID_STATE = 3     # e.g., Directional solid-state LiDAR
+    LIDAR_16_CH = 1  # e.g., 16-channel spinning LiDAR
+    LIDAR_32_CH = 2  # e.g., 32-channel spinning LiDAR
+    SOLID_STATE = 3  # e.g., Directional solid-state LiDAR
 
 
 @dataclass(frozen=True)
 class Sensor:
     """
     Represents a sensor type with its specifications.
-    
+
     Attributes:
         sensor_type: The type of the sensor.
         price: The price of the sensor.
@@ -21,6 +22,7 @@ class Sensor:
         vertical_channels: The number of vertical channels (for LiDARs).
         horizontal_res_deg: The horizontal resolution in degrees (for LiDARs).
     """
+
     sensor_type: SensorType
     price: float
     fov_horizontal_deg: float
@@ -42,7 +44,7 @@ SENSOR_CATALOG = {
     ),
     SensorType.LIDAR_32_CH: Sensor(
         sensor_type=SensorType.LIDAR_32_CH,
-        price=799.0, 
+        price=799.0,
         fov_horizontal_deg=360.0,
         fov_vertical_deg=40.0,
         range_m=120.0,
@@ -55,7 +57,7 @@ SENSOR_CATALOG = {
         fov_horizontal_deg=120.0,
         fov_vertical_deg=45.0,
         range_m=80.0,
-        vertical_channels=1, 
+        vertical_channels=1,
         horizontal_res_deg=0.1,
     ),
 }

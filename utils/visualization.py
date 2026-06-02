@@ -16,7 +16,7 @@ def visualize_population(population: Population, max_display: int = 5) -> None:
     rows = []
 
     for index, individual in enumerate(visible_population, start=1):
-        cells = [f'<th>Individual {index}</th>']
+        cells = [f"<th>Individual {index}</th>"]
 
         for gene in individual:
             color = sensor_colors[gene.sensor.sensor_type.value]
@@ -26,27 +26,31 @@ def visualize_population(population: Population, max_display: int = 5) -> None:
                 # f'<div>price ${gene.sensor.price:,.2f}</div>'
                 # f'<div>FOV H {gene.sensor.fov_horizontal_deg}°, FOV V {gene.sensor.fov_vertical_deg}°</div>'
                 # f'<div>range {gene.sensor.range_m} m</div>'
-                f'<div>node {gene.node_id}</div>'
-                f'<div>pitch {gene.pitch}, roll {gene.roll}, yaw {gene.yaw}</div>'
-                f'</td>'
+                f"<div>node {gene.node_id}</div>"
+                f"<div>pitch {gene.pitch}, roll {gene.roll}, yaw {gene.yaw}</div>"
+                f"</td>"
             )
 
         while len(cells) < max_genes + 1:
             cells.append('<td class="empty">&mdash;</td>')
 
-        rows.append('<tr>' + ''.join(cells) + '</tr>')
+        rows.append("<tr>" + "".join(cells) + "</tr>")
 
-    header = '<tr><th>Individual</th>' + ''.join(f'<th>Sensor {i}</th>' for i in range(1, max_genes + 1)) + '</tr>'
+    header = (
+        "<tr><th>Individual</th>"
+        + "".join(f"<th>Sensor {i}</th>" for i in range(1, max_genes + 1))
+        + "</tr>"
+    )
     summary = ""
 
     if len(population) > max_display:
         summary = (
             f'<div style="margin: 0 0 12px 0; color: #57606a; font-size: 13px;">'
-            f'Showing first {max_display} of {len(population)} individuals.'
-            f'</div>'
+            f"Showing first {max_display} of {len(population)} individuals."
+            f"</div>"
         )
 
-    html = f'''
+    html = f"""
     <style>
       .population-table {{
         border-collapse: collapse;
@@ -73,7 +77,7 @@ def visualize_population(population: Population, max_display: int = 5) -> None:
       {header}
       {''.join(rows)}
     </table>
-    '''
+    """
 
     display(HTML(html))
 
@@ -99,8 +103,10 @@ def visualize_best_layout(individual: Individual) -> None:
         SensorType.SOLID_STATE: [44, 160, 44, 230],
     }
 
-    print(f"Best layout  ({len(individual)} sensor{'s' if len(individual) != 1 else ''}, "
-          f"fitness={individual.fitness.values[0]:.4f}):")
+    print(
+        f"Best layout  ({len(individual)} sensor{'s' if len(individual) != 1 else ''}, "
+        f"fitness={individual.fitness.values[0]:.4f}):"
+    )
     for i, gene in enumerate(individual, 1):
         pos = MOUNTING_GRAPH.nodes[gene.node_id]["pos"]
         print(
@@ -131,11 +137,13 @@ def visualize_best_layout(individual: Individual) -> None:
         # pitch tilts the arrow up (+) or down (-) from horizontal.
         yaw_rad = np.radians(gene.yaw)
         pitch_rad = np.radians(gene.pitch)
-        direction = np.array([
-            np.cos(pitch_rad) * np.cos(yaw_rad),
-            np.cos(pitch_rad) * np.sin(yaw_rad),
-            np.sin(pitch_rad),
-        ])
+        direction = np.array(
+            [
+                np.cos(pitch_rad) * np.cos(yaw_rad),
+                np.cos(pitch_rad) * np.sin(yaw_rad),
+                np.sin(pitch_rad),
+            ]
+        )
         arrow_tip = pos + direction * 0.15
 
         path = trimesh.load_path(np.array([[pos, arrow_tip]]))
@@ -149,16 +157,17 @@ def visualize_best_layout(individual: Individual) -> None:
 
     scene = trimesh.Scene(scene_items)
     print("\nRendering 3D viewer inline...")
-    
+
     # Force the GL viewer and explicitly display it in the cell
-    display(scene.show(viewer='gl'))
+    display(scene.show(viewer="gl"))
 
 
 def visualize_evolution(logbook) -> None:
     import matplotlib
-    if not hasattr(matplotlib.rcParams, '_get'):
+
+    if not hasattr(matplotlib.rcParams, "_get"):
         matplotlib.rcParams._get = matplotlib.rcParams.get
-        
+
     # Now you can run your imports and function safely
     import matplotlib.pyplot as plt
 
@@ -169,8 +178,12 @@ def visualize_evolution(logbook) -> None:
 
     plt.figure(figsize=(10, 5))
     plt.plot(generations, average_fitness, label="Average fitness", linewidth=2)
-    plt.plot(generations, minimum_fitness, label="Minimum fitness", linestyle="--", alpha=0.8)
-    plt.plot(generations, maximum_fitness, label="Maximum fitness", linestyle="--", alpha=0.8)
+    plt.plot(
+        generations, minimum_fitness, label="Minimum fitness", linestyle="--", alpha=0.8
+    )
+    plt.plot(
+        generations, maximum_fitness, label="Maximum fitness", linestyle="--", alpha=0.8
+    )
     plt.fill_between(generations, minimum_fitness, maximum_fitness, alpha=0.12)
     plt.title("Evolution of Fitness Over Generations")
     plt.xlabel("Generation")
