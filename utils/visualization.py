@@ -82,19 +82,44 @@ def visualize_population(population: Population, max_display: int = 5) -> None:
     display(HTML(html))
 
 
-def visualize_best_layout(individual: Individual) -> None:
-    """Render the best sensor layout overlaid on the robot mesh in a 3D viewer.
+def visualize_best_layout(
+    individual: Individual,
+    evaluator=None,
+    *,
+    show_rays: bool = True,
+    show_ground: bool = True,
+    show_cyl: bool = True,
+    show_arrows: bool = False,
+    max_rays_per_sensor: int = 200,
+    include_misses: bool = False,
+) -> None:
+    """Render the best sensor layout with its ray-cast coverage in a 3D viewer.
 
-    Each sensor is shown as a colored sphere at its mounting position, with an
-    arrow indicating the pointing direction derived from the gene's yaw and pitch.
-    Colors match the sensor type legend used in visualize_population.
+    Overlaid on the (semi-transparent) robot mesh:
+      * a colored sphere at each mounting node (sensor-type legend), optionally
+        with a pointing arrow,
+      * the rays cast from every sensor, colored by what they strike:
+        red = blocked by chassis (self-occlusion), green = ground plane,
+        blue = cylinder wall, grey = miss (only if ``include_misses``),
+      * the coverage the fitness actually counts: S_gnd as green points on the
+        ground plane and S_cyl as blue points on the radius-R_max wall.
+
+    Args:
+        evaluator: a ``CoverageEvaluator`` to reuse. If ``None``, one is built
+            (which reloads the chassis mesh and raycasting scene).
+        show_rays / show_ground / show_cyl / show_arrows: toggle overlays.
+        max_rays_per_sensor: cap on rays drawn per sensor (kept legible).
+        include_misses: also draw rays that strike nothing within range.
     """
     import numpy as np
     import trimesh
+    from trimesh.path import Path3D
+    from trimesh.path.entities import Line
     from IPython.display import display
 
     from config.graph import MOUNTING_GRAPH
     from generate_mounting_graph import build_robot_surface
+    from custom_toolbox.evaluate.evaluate_fitness_raycast import CoverageEvaluator
 
     # Sensor type → RGBA (matches the HTML table colors)
     SENSOR_COLORS: dict[SensorType, list[int]] = {
@@ -103,9 +128,26 @@ def visualize_best_layout(individual: Individual) -> None:
         SensorType.SOLID_STATE: [44, 160, 44, 230],
     }
 
+    # Ray strike category → RGBA (alpha conveys importance; misses fade out)
+    RAY_COLORS: dict[int, list[int]] = {
+        CoverageEvaluator.RAY_BLOCKED: [220, 60, 60, 90],
+        CoverageEvaluator.RAY_GROUND: [60, 200, 90, 140],
+        CoverageEvaluator.RAY_CYLINDER: [70, 140, 235, 140],
+        CoverageEvaluator.RAY_MISS: [160, 160, 160, 35],
+    }
+
+    if evaluator is None:
+        evaluator = CoverageEvaluator()
+
+    debug = evaluator.coverage_debug(
+        individual,
+        max_rays_per_sensor=max_rays_per_sensor,
+        include_misses=include_misses,
+    )
+
     print(
         f"Best layout  ({len(individual)} sensor{'s' if len(individual) != 1 else ''}, "
-        f"fitness={individual.fitness.values[0]:.4f}):"
+        f"fitness={debug['fitness']:.4f}):"
     )
     for i, gene in enumerate(individual, 1):
         pos = MOUNTING_GRAPH.nodes[gene.node_id]["pos"]
@@ -115,6 +157,12 @@ def visualize_best_layout(individual: Individual) -> None:
             f"pos=({pos[0]:+.3f}, {pos[1]:+.3f}, {pos[2]:+.3f})  "
             f"pitch={gene.pitch:+4d}°  roll={gene.roll:+4d}°  yaw={gene.yaw:+5d}°"
         )
+    ground_pts = debug["ground_cover_points"]
+    cyl_pts = debug["cyl_cover_points"]
+    print(
+        f"  coverage:  S_gnd={len(ground_pts)} cells (green),  "
+        f"S_cyl={len(cyl_pts)} cells (blue)"
+    )
 
     mesh = build_robot_surface()
     mesh.visual.face_colors = [110, 110, 110, 80]
@@ -132,34 +180,60 @@ def visualize_best_layout(individual: Individual) -> None:
         sphere.visual.face_colors = color
         scene_items.append(sphere)
 
-        # Arrow from the mounting position toward the sensor's pointing direction.
-        # yaw is the horizontal bearing (degrees, 0 = +X axis of the robot frame),
-        # pitch tilts the arrow up (+) or down (-) from horizontal.
-        yaw_rad = np.radians(gene.yaw)
-        pitch_rad = np.radians(gene.pitch)
-        direction = np.array(
-            [
-                np.cos(pitch_rad) * np.cos(yaw_rad),
-                np.cos(pitch_rad) * np.sin(yaw_rad),
-                np.sin(pitch_rad),
-            ]
+        if show_arrows:
+            # Arrow toward the sensor's pointing direction (repo convention:
+            # yaw = bearing from +X, positive pitch tilts up).
+            yaw_rad = np.radians(gene.yaw)
+            pitch_rad = np.radians(gene.pitch)
+            direction = np.array(
+                [
+                    np.cos(pitch_rad) * np.cos(yaw_rad),
+                    np.cos(pitch_rad) * np.sin(yaw_rad),
+                    np.sin(pitch_rad),
+                ]
+            )
+            arrow_tip = pos + direction * 0.15
+            path = trimesh.load_path(np.array([[pos, arrow_tip]]))
+            arrow_color = color[:3] + [255]
+            path.colors = np.tile(arrow_color, (len(path.entities), 1))
+            scene_items.append(path)
+
+    # --- Coverage point clouds (what the fitness counts) ---
+    if show_ground and len(ground_pts):
+        scene_items.append(
+            trimesh.points.PointCloud(ground_pts, colors=[60, 200, 90, 200])
         )
-        arrow_tip = pos + direction * 0.15
+    if show_cyl and len(cyl_pts):
+        scene_items.append(
+            trimesh.points.PointCloud(cyl_pts, colors=[70, 140, 235, 200])
+        )
 
-        path = trimesh.load_path(np.array([[pos, arrow_tip]]))
-        arrow_color = color[:3] + [255]
-        path.colors = np.tile(arrow_color, (len(path.entities), 1))
-        scene_items.append(path)
-
-    # scene = trimesh.Scene(scene_items)
-    # print("\nOpening 3D viewer (close the window to continue)...")
-    # scene.show(line_settings={"line_width": 3})
+    # --- Cast rays, colored by what they strike ---
+    if show_rays:
+        segments: list = []
+        seg_colors: list = []
+        for sensor_dbg in debug["sensors"]:
+            origins = sensor_dbg["ray_origins"]
+            endpoints = sensor_dbg["ray_endpoints"]
+            categories = sensor_dbg["ray_categories"]
+            for o, e, cat in zip(origins, endpoints, categories):
+                segments.append([o, e])
+                seg_colors.append(RAY_COLORS[int(cat)])
+        if segments:
+            # Build the path with one Line entity per segment. (trimesh.load_path
+            # would merge segments sharing the common sensor origin into multi-
+            # vertex entities, breaking the per-entity color mapping.)
+            vertices = np.asarray(segments, dtype=float).reshape(-1, 3)
+            entities = [Line(np.array([2 * i, 2 * i + 1])) for i in range(len(segments))]
+            rays_path = Path3D(entities=entities, vertices=vertices)
+            rays_path.colors = np.array(seg_colors, dtype=np.uint8)
+            scene_items.append(rays_path)
 
     scene = trimesh.Scene(scene_items)
     print("\nRendering 3D viewer inline...")
 
     # Force the GL viewer and explicitly display it in the cell
-    display(scene.show(viewer="gl"))
+    display(scene.show(viewer="gl", line_settings={"line_width": 1}))
 
 
 def visualize_evolution(logbook) -> None:

@@ -221,42 +221,30 @@ class CoverageEvaluator:
     # ======================================================================
     # Step 5: Discretisation & scoring (per evaluation surface)
     # ======================================================================
-    def _accumulate_ground(
-        self,
-        O: np.ndarray,
-        D: np.ndarray,
-        t_hit: np.ndarray,
-        ranges: np.ndarray,
-        grid: np.ndarray,
-    ) -> None:
-        """Mark ground-plane (Z = 0) hits that beat occlusion and range."""
+    def _ground_intersection(
+        self, O: np.ndarray, D: np.ndarray, t_hit: np.ndarray, ranges: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Ground-plane (Z = 0) ray parameters.
+
+        Returns ``(valid, t)`` where ``t`` is the parametric hit distance for
+        every ray (``nan``/garbage where invalid) and ``valid`` flags the rays
+        that strike the ground before the chassis occludes them and within range.
+        """
         dz = D[:, 2]
         with np.errstate(divide="ignore", invalid="ignore"):
             t = -O[:, 2] / dz
         valid = (dz != 0.0) & (t > _EPS) & (t < t_hit) & (t < ranges)
-        if not np.any(valid):
-            return
+        return valid, t
 
-        t = t[valid]
-        x = O[valid, 0] + t * D[valid, 0]
-        y = O[valid, 1] + t * D[valid, 1]
+    def _cylinder_intersection(
+        self, O: np.ndarray, D: np.ndarray, t_hit: np.ndarray, ranges: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Cylinder-wall (radius R_max) ray parameters, nearest positive root.
 
-        ix = np.floor((x + self.ground_half) / self.ground_res).astype(np.int64)
-        iy = np.floor((y + self.ground_half) / self.ground_res).astype(np.int64)
-        in_bounds = (
-            (ix >= 0) & (ix < self.ground_nx) & (iy >= 0) & (iy < self.ground_ny)
-        )
-        grid[iy[in_bounds], ix[in_bounds]] = True
-
-    def _accumulate_cylinder(
-        self,
-        O: np.ndarray,
-        D: np.ndarray,
-        t_hit: np.ndarray,
-        ranges: np.ndarray,
-        grid: np.ndarray,
-    ) -> None:
-        """Mark cylinder-wall (radius R_max) hits, using the nearest positive root."""
+        Returns ``(valid, t)`` analogous to :meth:`_ground_intersection`. ``t``
+        is ``+inf`` where the ray has no positive root or the quadratic is
+        degenerate, so it is always safe to compare.
+        """
         ox, oy = O[:, 0], O[:, 1]
         dx, dy = D[:, 0], D[:, 1]
 
@@ -266,27 +254,56 @@ class CoverageEvaluator:
         disc = b * b - 4.0 * a * c
 
         solvable = (a > _EPS) & (disc >= 0.0)
-        if not np.any(solvable):
-            return
-
         sq = np.sqrt(np.where(solvable, disc, 0.0))
         with np.errstate(divide="ignore", invalid="ignore"):
             t1 = (-b - sq) / (2.0 * a)
             t2 = (-b + sq) / (2.0 * a)
 
-        # Smallest strictly-positive root.
+        # Smallest strictly-positive root (inf when neither root is positive).
         t1p = np.where(t1 > _EPS, t1, np.inf)
         t2p = np.where(t2 > _EPS, t2, np.inf)
         t = np.minimum(t1p, t2p)
 
         valid = solvable & np.isfinite(t) & (t < t_hit) & (t < ranges)
+        return valid, t
+
+    def _mark_ground(
+        self,
+        O: np.ndarray,
+        D: np.ndarray,
+        valid: np.ndarray,
+        t: np.ndarray,
+        grid: np.ndarray,
+    ) -> None:
+        """Rasterise valid ground hits into the X/Y occupancy grid."""
         if not np.any(valid):
             return
+        tv = t[valid]
+        x = O[valid, 0] + tv * D[valid, 0]
+        y = O[valid, 1] + tv * D[valid, 1]
 
-        t = t[valid]
-        z = O[valid, 2] + t * D[valid, 2]
-        hx = O[valid, 0] + t * D[valid, 0]
-        hy = O[valid, 1] + t * D[valid, 1]
+        ix = np.floor((x + self.ground_half) / self.ground_res).astype(np.int64)
+        iy = np.floor((y + self.ground_half) / self.ground_res).astype(np.int64)
+        in_bounds = (
+            (ix >= 0) & (ix < self.ground_nx) & (iy >= 0) & (iy < self.ground_ny)
+        )
+        grid[iy[in_bounds], ix[in_bounds]] = True
+
+    def _mark_cylinder(
+        self,
+        O: np.ndarray,
+        D: np.ndarray,
+        valid: np.ndarray,
+        t: np.ndarray,
+        grid: np.ndarray,
+    ) -> None:
+        """Rasterise valid cylinder hits into the height/azimuth occupancy grid."""
+        if not np.any(valid):
+            return
+        tv = t[valid]
+        z = O[valid, 2] + tv * D[valid, 2]
+        hx = O[valid, 0] + tv * D[valid, 0]
+        hy = O[valid, 1] + tv * D[valid, 1]
         theta = np.mod(np.arctan2(hy, hx), 2.0 * np.pi)
 
         iz = np.floor((z - self.cyl_z_min) / self.cyl_z_res).astype(np.int64)
@@ -294,6 +311,35 @@ class CoverageEvaluator:
         ith = np.clip(ith, 0, self.cyl_n_az - 1)  # guard theta == 2*pi rounding
         in_bounds = (iz >= 0) & (iz < self.cyl_nz)
         grid[iz[in_bounds], ith[in_bounds]] = True
+
+    # ----- grid cell -> world point helpers (for visualisation) -----
+    def _ground_cells_to_points(self, grid: np.ndarray) -> np.ndarray:
+        """World-space centres ``(N, 3)`` of occupied ground cells (z = 0)."""
+        iy, ix = np.nonzero(grid)
+        x = (ix + 0.5) * self.ground_res - self.ground_half
+        y = (iy + 0.5) * self.ground_res - self.ground_half
+        return np.stack([x, y, np.zeros_like(x)], axis=-1)
+
+    def _cyl_cells_to_points(self, grid: np.ndarray) -> np.ndarray:
+        """World-space centres ``(N, 3)`` of occupied cylinder-wall cells."""
+        iz, ith = np.nonzero(grid)
+        z = self.cyl_z_min + (iz + 0.5) * self.cyl_z_res
+        theta = (ith + 0.5) * self.cyl_dtheta
+        x = self.cyl_radius * np.cos(theta)
+        y = self.cyl_radius * np.sin(theta)
+        return np.stack([x, y, z], axis=-1)
+
+    def _score(
+        self, ground_grid: np.ndarray, cyl_grid: np.ndarray, individual: Individual
+    ) -> float:
+        """Normalised, weighted fitness from filled grids and sensor cost."""
+        covered_cells = int(ground_grid.sum()) + int(cyl_grid.sum())
+        m_cov = covered_cells / self._cells_total  # 0..1
+
+        total_cost = sum(gene.sensor.price for gene in individual)
+        c_norm = min(total_cost / self.max_budget, 1.0)  # 0..1
+
+        return max(0.0, self.w_cov * m_cov - self.w_cost * c_norm)
 
     # ======================================================================
     # Public DEAP entry point
@@ -332,21 +378,143 @@ class CoverageEvaluator:
         O = rays6[:, 0:3].astype(np.float64)
         D = rays6[:, 3:6].astype(np.float64)
 
-        self._accumulate_ground(O, D, t_hit, ranges, ground_grid)
-        self._accumulate_cylinder(O, D, t_hit, ranges, cyl_grid)
+        g_valid, g_t = self._ground_intersection(O, D, t_hit, ranges)
+        c_valid, c_t = self._cylinder_intersection(O, D, t_hit, ranges)
+        self._mark_ground(O, D, g_valid, g_t, ground_grid)
+        self._mark_cylinder(O, D, c_valid, c_t, cyl_grid)
 
         self.last_ground_grid = ground_grid
         self.last_cyl_grid = cyl_grid
 
-        # --- Normalised, weighted fitness ---
-        covered_cells = int(ground_grid.sum()) + int(cyl_grid.sum())
-        m_cov = covered_cells / self._cells_total  # 0..1
+        return (self._score(ground_grid, cyl_grid, individual),)
 
-        total_cost = sum(gene.sensor.price for gene in individual)
-        c_norm = min(total_cost / self.max_budget, 1.0)  # 0..1
+    # ======================================================================
+    # Visualisation helper
+    # ======================================================================
+    # Ray strike categories (for colouring in a viewer).
+    RAY_BLOCKED = 0  # chassis self-occlusion
+    RAY_GROUND = 1  # reaches the ground plane
+    RAY_CYLINDER = 2  # reaches the cylinder wall
+    RAY_MISS = 3  # escapes without striking a target within range
 
-        fitness = self.w_cov * m_cov - self.w_cost * c_norm
-        return (max(0.0, fitness),)
+    def coverage_debug(
+        self,
+        individual: Individual,
+        max_rays_per_sensor: int = 250,
+        include_misses: bool = False,
+    ) -> dict:
+        """Recompute coverage and return geometry for visualisation.
+
+        Mirrors :meth:`evaluate_individual` exactly (same grids, same fitness)
+        but additionally returns, for plotting:
+
+        * ``ground_cover_points`` / ``cyl_cover_points`` -- world-space centres
+          of the occupied S_gnd / S_cyl cells (i.e. exactly what fitness counts),
+        * ``sensors`` -- per-gene subsampled ray segments (origin -> first
+          strike) tagged with a ``RAY_*`` category for colouring.
+
+        Args:
+            max_rays_per_sensor: cap on rays drawn per sensor (evenly strided)
+                so dense LiDARs stay legible.
+            include_misses: keep rays that strike nothing within range.
+        """
+        ground_grid = np.zeros((self.ground_ny, self.ground_nx), dtype=bool)
+        cyl_grid = np.zeros((self.cyl_nz, self.cyl_n_az), dtype=bool)
+
+        empty = {
+            "fitness": 0.0,
+            "ground_grid": ground_grid,
+            "cyl_grid": cyl_grid,
+            "ground_cover_points": np.empty((0, 3)),
+            "cyl_cover_points": np.empty((0, 3)),
+            "sensors": [],
+        }
+        if not individual:
+            return empty
+
+        # --- Build rays, remembering each gene's slice into the batch ---
+        rays_chunks: list[np.ndarray] = []
+        range_chunks: list[np.ndarray] = []
+        slices: list[tuple[int, int, object]] = []
+        start = 0
+        for gene in individual:
+            node_xyz = np.asarray(MOUNTING_GRAPH.nodes[gene.node_id]["pos"], dtype=float)
+            local = self._generate_local_rays(gene.sensor)
+            rays6 = self._transform_rays(
+                local, node_xyz, gene.pitch, gene.roll, gene.yaw
+            )
+            n = rays6.shape[0]
+            rays_chunks.append(rays6)
+            range_chunks.append(np.full(n, gene.sensor.range_m))
+            slices.append((start, start + n, gene))
+            start += n
+
+        rays6 = np.concatenate(rays_chunks, axis=0)
+        ranges = np.concatenate(range_chunks, axis=0)
+        t_hit = self._cast(rays6)
+        O = rays6[:, 0:3].astype(np.float64)
+        D = rays6[:, 3:6].astype(np.float64)
+
+        # --- Intersections (drives both grids and ray categories) ---
+        g_valid, g_t = self._ground_intersection(O, D, t_hit, ranges)
+        c_valid, c_t = self._cylinder_intersection(O, D, t_hit, ranges)
+        self._mark_ground(O, D, g_valid, g_t, ground_grid)
+        self._mark_cylinder(O, D, c_valid, c_t, cyl_grid)
+        self.last_ground_grid = ground_grid
+        self.last_cyl_grid = cyl_grid
+
+        # Per-ray candidate distances; +inf where that target is not reached.
+        t_chassis = np.where(np.isfinite(t_hit) & (t_hit < ranges), t_hit, np.inf)
+        t_ground = np.where(g_valid, g_t, np.inf)
+        t_cyl = np.where(c_valid, c_t, np.inf)
+        # Column order must match RAY_BLOCKED / RAY_GROUND / RAY_CYLINDER.
+        t_stack = np.stack([t_chassis, t_ground, t_cyl], axis=1)
+
+        sensors_dbg = []
+        for s, e, gene in slices:
+            n = e - s
+            if n > max_rays_per_sensor:
+                idx = np.linspace(s, e - 1, max_rays_per_sensor).astype(np.int64)
+            else:
+                idx = np.arange(s, e)
+
+            rng = ranges[idx]
+            sub = t_stack[idx]
+            t_min = sub.min(axis=1)
+            category = sub.argmin(axis=1).astype(np.int64)
+            miss = ~np.isfinite(t_min)
+            category[miss] = self.RAY_MISS
+
+            # Draw misses out to the sensor range so direction stays visible.
+            t_draw = np.where(miss, rng, t_min)
+            origins = O[idx]
+            endpoints = origins + t_draw[:, None] * D[idx]
+
+            if not include_misses:
+                keep = ~miss
+                origins = origins[keep]
+                endpoints = endpoints[keep]
+                category = category[keep]
+
+            sensors_dbg.append(
+                {
+                    "node_id": gene.node_id,
+                    "sensor_type": gene.sensor.sensor_type,
+                    "origin": O[s],
+                    "ray_origins": origins,
+                    "ray_endpoints": endpoints,
+                    "ray_categories": category,
+                }
+            )
+
+        return {
+            "fitness": self._score(ground_grid, cyl_grid, individual),
+            "ground_grid": ground_grid,
+            "cyl_grid": cyl_grid,
+            "ground_cover_points": self._ground_cells_to_points(ground_grid),
+            "cyl_cover_points": self._cyl_cells_to_points(cyl_grid),
+            "sensors": sensors_dbg,
+        }
 
 
 if __name__ == "__main__":
