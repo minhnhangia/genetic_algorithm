@@ -125,6 +125,7 @@ def visualize_best_layout(
     from config.graph import MOUNTING_GRAPH
     from generate_mounting_graph import build_robot_surface
     from custom_toolbox.evaluate.evaluate_fitness_raycast import CoverageEvaluator
+    from custom_toolbox.evaluate.sensor_body import sensor_body_mesh
 
     # Sensor type → RGBA (matches the HTML table colors)
     SENSOR_COLORS: dict[SensorType, list[int]] = {
@@ -222,11 +223,12 @@ def visualize_best_layout(
         pos = np.array(node["pos"], dtype=float)
         color = SENSOR_COLORS.get(gene.sensor.sensor_type, [200, 200, 200, 230])
 
-        # Sphere at the mounting position
-        sphere = trimesh.creation.icosphere(subdivisions=3, radius=0.04)
-        sphere.apply_translation(pos)
-        sphere.visual.face_colors = color
-        scene_items.append(sphere)
+        # Short cylinder body at the mount, oriented by the gene's roll/pitch/yaw
+        # (the same mesh the evaluator uses to occlude other sensors' rays).
+        body_verts, body_faces = sensor_body_mesh(gene, pos)
+        body = trimesh.Trimesh(vertices=body_verts, faces=body_faces, process=False)
+        body.visual.face_colors = color
+        scene_items.append(body)
 
         if show_arrows:
             # Arrow toward the sensor's pointing direction (repo convention:

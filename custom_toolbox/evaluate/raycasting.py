@@ -17,11 +17,43 @@ from __future__ import annotations
 
 import numpy as np
 import open3d as o3d
-from scipy.spatial.transform import Rotation
 
 from config.graph import MOUNTING_GRAPH
 from config.params import Gene, Individual
 from config.sensors import Sensor, SensorType
+
+from .sensor_body import rotation_matrix, sensor_body_mesh
+
+
+def cast_rays_against_meshes(
+    rays6: np.ndarray, meshes: list[tuple[np.ndarray, np.ndarray]]
+) -> np.ndarray:
+    """Cast ``(M, 6)`` rays against an ad-hoc set of ``(verts, faces)`` meshes.
+
+    Builds a throwaway raycasting scene from ``meshes`` and returns the ``(M,)``
+    distance to the first hit (``+inf`` for a miss). Used for per-individual
+    sensor-body occlusion, where the occluder set changes every layout and is
+    far too small to be worth a persistent BVH.
+
+    The meshes are merged and handed to Open3D as tensors directly; the legacy
+    ``TriangleMesh`` round-trip is ~9 ms per call and dominates otherwise.
+    """
+    vertex_blocks: list[np.ndarray] = []
+    face_blocks: list[np.ndarray] = []
+    offset = 0
+    for verts, faces in meshes:
+        verts = np.asarray(verts, dtype=np.float32)
+        vertex_blocks.append(verts)
+        face_blocks.append(np.asarray(faces, dtype=np.uint32) + offset)
+        offset += verts.shape[0]
+
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(
+        o3d.core.Tensor(np.concatenate(vertex_blocks, axis=0)),
+        o3d.core.Tensor(np.concatenate(face_blocks, axis=0)),
+    )
+    rays_t = o3d.core.Tensor(rays6, dtype=o3d.core.Dtype.Float32)
+    return scene.cast_rays(rays_t)["t_hit"].numpy()
 
 
 class ChassisScene:
@@ -115,13 +147,8 @@ class SensorRayModel:
 
     @staticmethod
     def _rotation_matrix(pitch: float, roll: float, yaw: float) -> np.ndarray:
-        """Body->world rotation, repo convention (positive pitch = UP).
-
-        Equivalent to ``Rz(yaw) @ Ry(-pitch) @ Rx(roll)``; the negated pitch
-        makes a forward ray map to ``z = +sin(pitch)``, matching
-        ``visualization.py`` and the mock's ``OPTIMAL_PITCH = -10`` (down).
-        """
-        return Rotation.from_euler("ZYX", [yaw, -pitch, roll], degrees=True).as_matrix()
+        """Body->world rotation (see :func:`sensor_body.rotation_matrix`)."""
+        return rotation_matrix(pitch, roll, yaw)
 
     def _transform(
         self,
@@ -162,3 +189,8 @@ class SensorRayModel:
             ranges = np.full(rays6.shape[0], gene.sensor.range_m, dtype=np.float32)
             bundles.append((gene, rays6, ranges))
         return bundles
+
+    def body_mesh(self, gene: Gene) -> tuple[np.ndarray, np.ndarray]:
+        """World-frame ``(vertices, faces)`` of ``gene``'s sensor body."""
+        node_xyz = np.asarray(self._graph.nodes[gene.node_id]["pos"], dtype=float)
+        return sensor_body_mesh(gene, node_xyz)

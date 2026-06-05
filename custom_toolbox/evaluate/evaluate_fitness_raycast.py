@@ -47,7 +47,7 @@ from config.params import Individual
 # Single source of truth for the chassis mesh location.
 from generate_mounting_graph import CHASSIS_MESH_PATH
 
-from .raycasting import ChassisScene, SensorRayModel
+from .raycasting import ChassisScene, SensorRayModel, cast_rays_against_meshes
 from .scoring import FitnessScorer, genome_key
 from .surfaces import CylinderWall, GroundDisk
 
@@ -79,7 +79,7 @@ class CoverageEvaluator:
         ground_azimuth_bins: int = 360,
         # --- Cylinder grid (height Z, azimuth theta at radius R_max) ---
         cyl_z_min_m: float = 0.0,
-        cyl_z_max_m: float = 4.0,
+        cyl_z_max_m: float = 3.0,
         cyl_z_res_m: float = 0.1,
         cyl_azimuth_bins: int = 360,
         # --- Fitness blend ---
@@ -129,6 +129,40 @@ class CoverageEvaluator:
     # ======================================================================
     # Core scoring pipeline
     # ======================================================================
+    def _cast_with_bodies(
+        self, bundles: list[tuple[object, np.ndarray, np.ndarray]]
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Cast every ray against the chassis *and* other sensors' bodies.
+
+        Returns concatenated ``(rays6, ranges, t_hit)``. ``t_hit`` folds in two
+        occluders: the static chassis (self-occlusion) and, per gene, the bodies
+        of the *other* sensors in the layout. A sensor never occludes its own
+        rays (they originate inside its own body), and a co-located sensor (same
+        node) is skipped to avoid a degenerate zero-distance hit.
+        """
+        rays6 = np.concatenate([b[1] for b in bundles], axis=0)
+        ranges = np.concatenate([b[2] for b in bundles], axis=0)
+        t_hit = self._scene.cast(rays6)
+
+        if len(bundles) >= 2:
+            meshes = [self._rays.body_mesh(gene) for gene, _, _ in bundles]
+            node_ids = [gene.node_id for gene, _, _ in bundles]
+            offset = 0
+            for i, (_, r6, _) in enumerate(bundles):
+                n = r6.shape[0]
+                others = [
+                    meshes[j]
+                    for j in range(len(meshes))
+                    if j != i and node_ids[j] != node_ids[i]
+                ]
+                if others:
+                    t_body = cast_rays_against_meshes(r6, others)
+                    seg = slice(offset, offset + n)
+                    np.minimum(t_hit[seg], t_body, out=t_hit[seg])
+                offset += n
+
+        return rays6, ranges, t_hit
+
     def _compute_fitness(self, individual: Individual) -> tuple[float]:
         """Raycast + score one layout (no cache). Updates ``last_*_grid``."""
         ground_grid = self.ground.new_grid()
@@ -140,10 +174,7 @@ class CoverageEvaluator:
             self.last_cyl_grid = cyl_grid
             return (0.0,)
 
-        # One batched raycast for the entire genome (self-occlusion).
-        rays6 = np.concatenate([b[1] for b in bundles], axis=0)
-        ranges = np.concatenate([b[2] for b in bundles], axis=0)
-        t_hit = self._scene.cast(rays6)
+        rays6, ranges, t_hit = self._cast_with_bodies(bundles)
 
         O = rays6[:, 0:3].astype(np.float32, copy=False)
         D = rays6[:, 3:6].astype(np.float32, copy=False)
@@ -256,20 +287,17 @@ class CoverageEvaluator:
             return empty
 
         # --- Build rays, remembering each gene's slice into the batch ---
-        rays_chunks: list[np.ndarray] = []
-        range_chunks: list[np.ndarray] = []
+        bundles = self._rays.gene_bundles(individual)
         slices: list[tuple[int, int, object]] = []
         start = 0
-        for gene, rays6, ranges in self._rays.gene_bundles(individual):
+        for gene, rays6, ranges in bundles:
             n = rays6.shape[0]
-            rays_chunks.append(rays6)
-            range_chunks.append(ranges)
             slices.append((start, start + n, gene))
             start += n
 
-        rays6 = np.concatenate(rays_chunks, axis=0)
-        ranges = np.concatenate(range_chunks, axis=0)
-        t_hit = self._scene.cast(rays6)
+        # t_hit folds in both chassis and other-sensor-body occlusion, so rays
+        # blocked by a neighbouring sensor are categorised RAY_BLOCKED too.
+        rays6, ranges, t_hit = self._cast_with_bodies(bundles)
         O = rays6[:, 0:3].astype(np.float32, copy=False)
         D = rays6[:, 3:6].astype(np.float32, copy=False)
 
