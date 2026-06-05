@@ -176,6 +176,7 @@ def visualize_best_layout(
 
     # --- Evaluation domain wireframe (ground polar grid + cylinder wall) ---
     if show_domain:
+
         def _circle(radius: float, z: float, n: int = 128) -> list:
             a = np.linspace(0.0, 2.0 * np.pi, n + 1)
             pts = np.stack(
@@ -183,10 +184,10 @@ def visualize_best_layout(
             )
             return [[pts[i], pts[i + 1]] for i in range(n)]
 
-        r0 = evaluator.ground_r_min
+        r0 = evaluator.ground.r_min
         R = evaluator.max_radius
-        z0 = evaluator.cyl_z_min
-        z1 = evaluator.cyl_z_min + evaluator.cyl_nz * evaluator.cyl_z_res
+        z0 = evaluator.cylinder.z_min
+        z1 = evaluator.cylinder.z_min + evaluator.cylinder.nz * evaluator.cylinder.z_res
 
         domain_segs: list = []
         # Ground annulus: a few radial rings between the footprint and R_max...
@@ -271,7 +272,9 @@ def visualize_best_layout(
             # would merge segments sharing the common sensor origin into multi-
             # vertex entities, breaking the per-entity color mapping.)
             vertices = np.asarray(segments, dtype=float).reshape(-1, 3)
-            entities = [Line(np.array([2 * i, 2 * i + 1])) for i in range(len(segments))]
+            entities = [
+                Line(np.array([2 * i, 2 * i + 1])) for i in range(len(segments))
+            ]
             rays_path = Path3D(entities=entities, vertices=vertices)
             rays_path.colors = np.array(seg_colors, dtype=np.uint8)
             scene_items.append(rays_path)
@@ -318,11 +321,10 @@ def visualize_coverage_maps(individual: Individual, evaluator=None) -> None:
     c_frac = c.mean() if c.size else 0.0
 
     # Polar cell edges for the ground annulus.
-    r_edges = evaluator.ground_r_min + np.arange(evaluator.ground_n_r + 1) * (
-        evaluator.ground_r_res
-    )
-    th_edges = np.arange(evaluator.ground_n_az + 1) * evaluator.ground_dtheta
-    z_max = evaluator.cyl_z_min + evaluator.cyl_nz * evaluator.cyl_z_res
+    ground, cylinder = evaluator.ground, evaluator.cylinder
+    r_edges = ground.r_min + np.arange(ground.n_r + 1) * ground.r_res
+    th_edges = np.arange(ground.n_az + 1) * ground.dtheta
+    z_max = cylinder.z_min + cylinder.nz * cylinder.z_res
 
     fig = plt.figure(figsize=(13, 5.5))
 
@@ -333,7 +335,7 @@ def visualize_coverage_maps(individual: Individual, evaluator=None) -> None:
     ax1.set_rmin(0.0)
     ax1.set_title(
         f"S_gnd ground coverage  ({int(g.sum())}/{g.size} cells, {g_frac:.1%})\n"
-        f"polar (r, θ),  r ∈ [{evaluator.ground_r_min:.2f}, "
+        f"polar (r, θ),  r ∈ [{ground.r_min:.2f}, "
         f"{evaluator.max_radius:.2f}] m",
         fontsize=11,
     )
@@ -347,7 +349,7 @@ def visualize_coverage_maps(individual: Individual, evaluator=None) -> None:
         cmap="Blues",
         vmin=0.0,
         vmax=1.0,
-        extent=[0.0, 360.0, evaluator.cyl_z_min, z_max],
+        extent=[0.0, 360.0, cylinder.z_min, z_max],
     )
     ax2.set_xlabel("azimuth θ (deg)")
     ax2.set_ylabel("height z (m)")
