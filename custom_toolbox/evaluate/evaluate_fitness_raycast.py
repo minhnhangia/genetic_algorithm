@@ -198,7 +198,7 @@ class CoverageEvaluator:
         dirs = np.stack(
             (np.cos(V) * np.cos(H), np.cos(V) * np.sin(H), np.sin(V)),
             axis=-1,
-        ).astype(np.float64)
+        ).astype(np.float32)
 
         self._local_ray_cache[sensor.sensor_type] = dirs
         return dirs
@@ -231,8 +231,8 @@ class CoverageEvaluator:
         Returns an ``(N, 6)`` array laid out as
         ``[ox, oy, oz, dx, dy, dz]`` ready for Open3D.
         """
-        R = self._rotation_matrix(pitch, roll, yaw)
-        world_dirs = local_rays @ R.T  # (N, 3)
+        R = self._rotation_matrix(pitch, roll, yaw).astype(np.float32)
+        world_dirs = local_rays @ R.T  # (N, 3), float32
 
         n = world_dirs.shape[0]
         rays6 = np.empty((n, 6), dtype=np.float32)
@@ -410,7 +410,9 @@ class CoverageEvaluator:
                 local, node_xyz, gene.pitch, gene.roll, gene.yaw
             )
             rays_chunks.append(rays6)
-            range_chunks.append(np.full(rays6.shape[0], gene.sensor.range_m))
+            range_chunks.append(
+                np.full(rays6.shape[0], gene.sensor.range_m, dtype=np.float32)
+            )
 
         if not rays_chunks:
             self.last_ground_grid = ground_grid
@@ -422,8 +424,8 @@ class CoverageEvaluator:
         ranges = np.concatenate(range_chunks, axis=0)
         t_hit = self._cast(rays6)
 
-        O = rays6[:, 0:3].astype(np.float64)
-        D = rays6[:, 3:6].astype(np.float64)
+        O = rays6[:, 0:3].astype(np.float32, copy=False)
+        D = rays6[:, 3:6].astype(np.float32, copy=False)
 
         g_valid, g_t = self._ground_intersection(O, D, t_hit, ranges)
         c_valid, c_t = self._cylinder_intersection(O, D, t_hit, ranges)
@@ -492,15 +494,15 @@ class CoverageEvaluator:
             )
             n = rays6.shape[0]
             rays_chunks.append(rays6)
-            range_chunks.append(np.full(n, gene.sensor.range_m))
+            range_chunks.append(np.full(n, gene.sensor.range_m, dtype=np.float32))
             slices.append((start, start + n, gene))
             start += n
 
         rays6 = np.concatenate(rays_chunks, axis=0)
         ranges = np.concatenate(range_chunks, axis=0)
         t_hit = self._cast(rays6)
-        O = rays6[:, 0:3].astype(np.float64)
-        D = rays6[:, 3:6].astype(np.float64)
+        O = rays6[:, 0:3].astype(np.float32, copy=False)
+        D = rays6[:, 3:6].astype(np.float32, copy=False)
 
         # --- Intersections (drives both grids and ray categories) ---
         g_valid, g_t = self._ground_intersection(O, D, t_hit, ranges)
