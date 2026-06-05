@@ -89,6 +89,7 @@ def visualize_best_layout(
     show_rays: bool = True,
     show_ground: bool = True,
     show_cyl: bool = True,
+    show_domain: bool = True,
     show_arrows: bool = False,
     max_rays_per_sensor: int = 200,
     include_misses: bool = False,
@@ -108,6 +109,10 @@ def visualize_best_layout(
         evaluator: a ``CoverageEvaluator`` to reuse. If ``None``, one is built
             (which reloads the chassis mesh and raycasting scene).
         show_rays / show_ground / show_cyl / show_arrows: toggle overlays.
+        show_domain: draw the evaluation surfaces as a faint wireframe -- the
+            ground annulus' polar grid (radial rings + spokes between r_min and
+            R_max) and the cylindrical wall (R_max), so uncovered area is
+            visible, not only the cells the rays filled.
         max_rays_per_sensor: cap on rays drawn per sensor (kept legible).
         include_misses: also draw rays that strike nothing within range.
     """
@@ -168,6 +173,48 @@ def visualize_best_layout(
     mesh.visual.face_colors = [110, 110, 110, 80]
 
     scene_items: list = [mesh]
+
+    # --- Evaluation domain wireframe (ground polar grid + cylinder wall) ---
+    if show_domain:
+        def _circle(radius: float, z: float, n: int = 128) -> list:
+            a = np.linspace(0.0, 2.0 * np.pi, n + 1)
+            pts = np.stack(
+                [radius * np.cos(a), radius * np.sin(a), np.full(n + 1, z)], axis=1
+            )
+            return [[pts[i], pts[i + 1]] for i in range(n)]
+
+        r0 = evaluator.ground_r_min
+        R = evaluator.max_radius
+        z0 = evaluator.cyl_z_min
+        z1 = evaluator.cyl_z_min + evaluator.cyl_nz * evaluator.cyl_z_res
+
+        domain_segs: list = []
+        # Ground annulus: a few radial rings between the footprint and R_max...
+        for rr in np.linspace(r0, R, 5):
+            domain_segs += _circle(float(rr), 0.0)
+        # ...and azimuth spokes spanning the annulus.
+        for th in np.linspace(0.0, 2.0 * np.pi, 12, endpoint=False):
+            domain_segs.append(
+                [
+                    [r0 * np.cos(th), r0 * np.sin(th), 0.0],
+                    [R * np.cos(th), R * np.sin(th), 0.0],
+                ]
+            )
+        # Cylinder wall at R_max: bottom + top rings joined by verticals.
+        domain_segs += _circle(R, z0) + _circle(R, z1)
+        for th in np.linspace(0.0, 2.0 * np.pi, 12, endpoint=False):
+            domain_segs.append(
+                [
+                    [R * np.cos(th), R * np.sin(th), z0],
+                    [R * np.cos(th), R * np.sin(th), z1],
+                ]
+            )
+
+        domain_path = trimesh.load_path(np.array(domain_segs, dtype=float))
+        domain_path.colors = np.tile(
+            [150, 150, 150, 60], (len(domain_path.entities), 1)
+        )
+        scene_items.append(domain_path)
 
     for gene in individual:
         node = MOUNTING_GRAPH.nodes[gene.node_id]
@@ -234,6 +281,85 @@ def visualize_best_layout(
 
     # Force the GL viewer and explicitly display it in the cell
     display(scene.show(viewer="gl", line_settings={"line_width": 1}))
+
+
+def visualize_coverage_maps(individual: Individual, evaluator=None) -> None:
+    """Plot the coverage occupancy grids as inline 2D "flat maps".
+
+    Two panels rendered with matplotlib (non-blocking, unlike the 3D GL viewer):
+
+    * **S_gnd** -- the ground annulus drawn in its native polar ``(r, theta)``
+      grid, so radial reach and azimuthal gaps are immediately visible.
+    * **S_cyl** -- the cylindrical wall "unrolled" into a ``(theta, z)`` image.
+
+    Covered cells are filled; empty cells are blank. This is usually the clearest
+    way to spot coverage holes -- exactly the cells the fitness counts.
+
+    Args:
+        evaluator: a ``CoverageEvaluator`` to reuse. If ``None``, one is built.
+    """
+    import numpy as np
+    import matplotlib
+
+    if not hasattr(matplotlib.rcParams, "_get"):
+        matplotlib.rcParams._get = matplotlib.rcParams.get
+    import matplotlib.pyplot as plt
+
+    from custom_toolbox.evaluate.evaluate_fitness_raycast import CoverageEvaluator
+
+    if evaluator is None:
+        evaluator = CoverageEvaluator()
+
+    debug = evaluator.coverage_debug(individual)
+    g = debug["ground_grid"].astype(float)  # (n_r, n_az)
+    c = debug["cyl_grid"].astype(float)  # (n_z, n_az)
+
+    g_frac = g.mean() if g.size else 0.0
+    c_frac = c.mean() if c.size else 0.0
+
+    # Polar cell edges for the ground annulus.
+    r_edges = evaluator.ground_r_min + np.arange(evaluator.ground_n_r + 1) * (
+        evaluator.ground_r_res
+    )
+    th_edges = np.arange(evaluator.ground_n_az + 1) * evaluator.ground_dtheta
+    z_max = evaluator.cyl_z_min + evaluator.cyl_nz * evaluator.cyl_z_res
+
+    fig = plt.figure(figsize=(13, 5.5))
+
+    # --- Ground: native polar (r, theta) grid ---
+    ax1 = fig.add_subplot(1, 2, 1, projection="polar")
+    Th, Rr = np.meshgrid(th_edges, r_edges)
+    ax1.pcolormesh(Th, Rr, g, cmap="Greens", vmin=0.0, vmax=1.0, shading="flat")
+    ax1.set_rmin(0.0)
+    ax1.set_title(
+        f"S_gnd ground coverage  ({int(g.sum())}/{g.size} cells, {g_frac:.1%})\n"
+        f"polar (r, θ),  r ∈ [{evaluator.ground_r_min:.2f}, "
+        f"{evaluator.max_radius:.2f}] m",
+        fontsize=11,
+    )
+
+    # --- Cylinder: unrolled (theta, z) image ---
+    ax2 = fig.add_subplot(1, 2, 2)
+    ax2.imshow(
+        c,
+        origin="lower",
+        aspect="auto",
+        cmap="Blues",
+        vmin=0.0,
+        vmax=1.0,
+        extent=[0.0, 360.0, evaluator.cyl_z_min, z_max],
+    )
+    ax2.set_xlabel("azimuth θ (deg)")
+    ax2.set_ylabel("height z (m)")
+    ax2.set_title(
+        f"S_cyl wall coverage  ({int(c.sum())}/{c.size} cells, {c_frac:.1%})\n"
+        f"unrolled (θ, z) at R_max = {evaluator.max_radius:.2f} m",
+        fontsize=11,
+    )
+
+    fig.suptitle(f"Coverage maps  -  fitness = {debug['fitness']:.4f}", fontsize=13)
+    fig.tight_layout()
+    plt.show()
 
 
 def visualize_evolution(logbook) -> None:
