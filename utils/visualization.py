@@ -366,6 +366,178 @@ def visualize_coverage_maps(individual: Individual, evaluator=None) -> None:
     plt.show()
 
 
+def visualize_length_comparison(best_per_length, evaluator=None) -> None:
+    """Compare the best layout found at each sensor count side by side.
+
+    Renders two things from a :class:`~utils.best_per_length.BestPerLength`
+    record:
+
+    * an HTML summary table -- one row per sensor count, with fitness, coverage
+      (occupied / total cells and the fraction), total bill-of-materials cost,
+      and the mix of sensor types used;
+    * a bar chart of fitness vs sensor count with total cost overlaid on a twin
+      axis, so the coverage/redundancy gain per added sensor is immediately
+      visible against the cost it incurs.
+
+    Args:
+        best_per_length: the populated tracker (``.lengths`` / indexable by count).
+        evaluator: a ``CoverageEvaluator`` to reuse. If ``None``, one is built
+            (which reloads the chassis mesh and raycasting scene).
+    """
+    import matplotlib
+
+    if not hasattr(matplotlib.rcParams, "_get"):
+        matplotlib.rcParams._get = matplotlib.rcParams.get
+    import matplotlib.pyplot as plt
+
+    from custom_toolbox.evaluate.evaluate_fitness_raycast import CoverageEvaluator
+
+    lengths = best_per_length.lengths
+    if not lengths:
+        display(HTML("<em>No per-length bests recorded yet.</em>"))
+        return
+
+    if evaluator is None:
+        evaluator = CoverageEvaluator()
+
+    # --- Gather per-length metrics in one pass ---
+    rows_data = []
+    for length in lengths:
+        individual = best_per_length[length]
+        debug = evaluator.coverage_debug(individual)
+        g = debug["ground_grid"]
+        c = debug["cyl_grid"]
+        covered = int(g.sum()) + int(c.sum())
+        total = int(g.size) + int(c.size)
+        frac = (covered / total) if total else 0.0
+        cost = sum(gene.sensor.price for gene in individual)
+
+        type_counts: dict[str, int] = {}
+        for gene in individual:
+            name = gene.sensor.sensor_type.name
+            type_counts[name] = type_counts.get(name, 0) + 1
+        mix = ", ".join(f"{n}× {t}" for t, n in sorted(type_counts.items()))
+
+        rows_data.append(
+            {
+                "length": length,
+                "fitness": float(debug["fitness"]),
+                "covered": covered,
+                "total": total,
+                "frac": frac,
+                "cost": cost,
+                "mix": mix,
+            }
+        )
+
+    # --- HTML summary table ---
+    body_rows = "".join(
+        "<tr>"
+        f"<td style='text-align:center; font-weight:700;'>{r['length']}</td>"
+        f"<td style='text-align:right;'>{r['fitness']:.4f}</td>"
+        f"<td style='text-align:right;'>{r['covered']}/{r['total']} ({r['frac']:.1%})</td>"
+        f"<td style='text-align:right;'>${r['cost']:,.0f}</td>"
+        f"<td>{r['mix']}</td>"
+        "</tr>"
+        for r in rows_data
+    )
+    html = f"""
+    <style>
+      .length-table {{
+        border-collapse: collapse;
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+        margin-bottom: 12px;
+      }}
+      .length-table th, .length-table td {{
+        border: 1px solid #d0d7de;
+        padding: 8px 12px;
+      }}
+      .length-table th {{ background: #f6f8fa; text-align: center; }}
+    </style>
+    <table class='length-table'>
+      <tr>
+        <th>Sensors</th><th>Fitness</th><th>Coverage</th>
+        <th>Total cost</th><th>Sensor mix</th>
+      </tr>
+      {body_rows}
+    </table>
+    """
+    display(HTML(html))
+
+    # --- Fitness (bars) vs cost (line) by sensor count ---
+    xs = [r["length"] for r in rows_data]
+    fitnesses = [r["fitness"] for r in rows_data]
+    costs = [r["cost"] for r in rows_data]
+
+    fig, ax1 = plt.subplots(figsize=(9, 5))
+    bars = ax1.bar(xs, fitnesses, color="#2ca02c", alpha=0.75, label="Fitness")
+    ax1.set_xlabel("Number of sensors")
+    ax1.set_ylabel("Fitness", color="#2ca02c")
+    ax1.tick_params(axis="y", labelcolor="#2ca02c")
+    ax1.set_xticks(xs)
+    ax1.bar_label(bars, fmt="%.4f", padding=3, fontsize=9)
+
+    ax2 = ax1.twinx()
+    ax2.plot(
+        xs, costs, color="#d62728", marker="o", linewidth=2, label="Total cost ($)"
+    )
+    ax2.set_ylabel("Total cost ($)", color="#d62728")
+    ax2.tick_params(axis="y", labelcolor="#d62728")
+
+    ax1.set_title("Best layout per sensor count: fitness vs cost")
+    fig.tight_layout()
+    plt.show()
+
+
+def visualize_bests_per_length(
+    best_per_length,
+    evaluator=None,
+    *,
+    show_maps: bool = True,
+    show_3d: bool = True,
+    **layout_kwargs,
+) -> None:
+    """Render the best layout at every sensor count, in ascending order.
+
+    For each recorded sensor count this calls :func:`visualize_coverage_maps`
+    (2D occupancy grids) and/or :func:`visualize_best_layout` (3D ray-cast
+    viewer), reusing a single ``evaluator`` so the chassis mesh and raycasting
+    scene are loaded only once.
+
+    Args:
+        best_per_length: the populated tracker (iterates bests by sensor count).
+        evaluator: a ``CoverageEvaluator`` to reuse. If ``None``, one is built.
+        show_maps: render the 2D coverage maps for each length.
+        show_3d: render the 3D layout viewer for each length.
+        **layout_kwargs: forwarded to :func:`visualize_best_layout`
+            (e.g. ``show_rays``, ``max_rays_per_sensor``, ``show_arrows``).
+    """
+    from custom_toolbox.evaluate.evaluate_fitness_raycast import CoverageEvaluator
+
+    lengths = best_per_length.lengths
+    if not lengths:
+        display(HTML("<em>No per-length bests recorded yet.</em>"))
+        return
+
+    if evaluator is None:
+        evaluator = CoverageEvaluator()
+
+    for length in lengths:
+        individual = best_per_length[length]
+        plural = "s" if length != 1 else ""
+        display(
+            HTML(
+                f"<h3 style='margin:18px 0 6px;'>Best {length}-sensor"
+                f"{plural} layout</h3>"
+            )
+        )
+        if show_maps:
+            visualize_coverage_maps(individual, evaluator=evaluator)
+        if show_3d:
+            visualize_best_layout(individual, evaluator=evaluator, **layout_kwargs)
+
+
 def visualize_evolution(logbook) -> None:
     import matplotlib
 
@@ -394,5 +566,123 @@ def visualize_evolution(logbook) -> None:
     plt.ylabel("Fitness")
     plt.grid(True, alpha=0.25)
     plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def visualize_evolution_per_length(per_length_evolution, metric: str = "max") -> None:
+    """Plot the fitness evolution of each sensor count on a single chart.
+
+    One line per sensor count, tracking that count's ``metric`` fitness across
+    generations (default ``"max"`` -- the best layout of that size each gen).
+    Generations where a count was absent leave a gap in its line, so a count
+    that appears late or goes extinct is visible as such.
+
+    Args:
+        per_length_evolution: a populated
+            :class:`~utils.per_length_evolution.PerLengthEvolution`.
+        metric: ``"max"``, ``"avg"``, ``"min"``, or ``"count"``.
+    """
+    import matplotlib
+
+    if not hasattr(matplotlib.rcParams, "_get"):
+        matplotlib.rcParams._get = matplotlib.rcParams.get
+    import matplotlib.pyplot as plt
+
+    lengths = per_length_evolution.lengths
+    if not lengths:
+        display(HTML("<em>No per-length evolution recorded yet.</em>"))
+        return
+
+    metric_label = {
+        "max": "best (max)",
+        "avg": "average",
+        "min": "minimum",
+        "count": "individual count",
+    }.get(metric, metric)
+
+    plt.figure(figsize=(10, 5))
+    for length in lengths:
+        gens, vals = per_length_evolution.series(length, metric)
+        # Markers help when only a few generations were recorded; with many
+        # generations a clean line is more legible.
+        marker = "o" if len(gens) <= 40 else None
+        plt.plot(
+            gens,
+            vals,
+            label=f"{length} sensor{'s' if length != 1 else ''}",
+            linewidth=2,
+            marker=marker,
+            markersize=4,
+        )
+
+    ylabel = "Fitness" if metric != "count" else "Individuals"
+    plt.title(f"Per-sensor-count evolution of {metric_label} fitness")
+    plt.xlabel("Generation")
+    plt.ylabel(ylabel)
+    plt.grid(True, alpha=0.25)
+    plt.legend(title="Sensor count")
+    plt.tight_layout()
+    plt.show()
+
+
+def visualize_length_distribution(per_length_evolution, *, normalize: bool = False) -> None:
+    """Stacked-area chart of how many individuals have each sensor count per gen.
+
+    Shows the population's *composition* over the run: each band is one sensor
+    count, and the bands stack to the population size, so you can see selection
+    pressure shift the population toward (or away from) particular counts.
+
+    Args:
+        per_length_evolution: a populated
+            :class:`~utils.per_length_evolution.PerLengthEvolution`.
+        normalize: if ``True``, plot each generation as fractions of the
+            population (bands sum to 1.0) instead of raw counts.
+    """
+    import math
+
+    import matplotlib
+
+    if not hasattr(matplotlib.rcParams, "_get"):
+        matplotlib.rcParams._get = matplotlib.rcParams.get
+    import matplotlib.pyplot as plt
+
+    lengths = per_length_evolution.lengths
+    gens = per_length_evolution.generations
+    if not lengths:
+        display(HTML("<em>No per-length evolution recorded yet.</em>"))
+        return
+
+    # Counts per length; an absent count in a generation is 0 (not a gap).
+    counts = []
+    for length in lengths:
+        _, vals = per_length_evolution.series(length, "count")
+        counts.append([0.0 if math.isnan(v) else v for v in vals])
+
+    if normalize:
+        totals = [sum(col) for col in zip(*counts)]
+        counts = [
+            [(v / t if t else 0.0) for v, t in zip(row, totals)] for row in counts
+        ]
+
+    plt.figure(figsize=(10, 5))
+    plt.stackplot(
+        gens,
+        counts,
+        labels=[f"{length} sensor{'s' if length != 1 else ''}" for length in lengths],
+        alpha=0.85,
+    )
+    plt.title(
+        "Population composition by sensor count over generations"
+        + (" (normalized)" if normalize else "")
+    )
+    plt.xlabel("Generation")
+    plt.ylabel("Fraction of population" if normalize else "Number of individuals")
+    if gens:
+        plt.xlim(min(gens), max(gens))
+    if normalize:
+        plt.ylim(0.0, 1.0)
+    plt.grid(True, alpha=0.2)
+    plt.legend(title="Sensor count", loc="upper left")
     plt.tight_layout()
     plt.show()

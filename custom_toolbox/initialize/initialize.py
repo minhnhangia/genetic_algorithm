@@ -4,6 +4,11 @@ from config import params, sensors
 from config.params import Gene, Population, Individual
 
 
+def _gaussian_angle(std_deg: float, bound: int) -> int:
+    """Integer angle ~ N(0, std_deg), clamped to [-bound, bound] degrees."""
+    return int(round(max(-bound, min(bound, random.gauss(0.0, std_deg)))))
+
+
 def create_gene(assigned_node_id: int) -> Gene:
     """Generates a single active sensor configuration."""
     sensor = random.choice(list(sensors.SENSOR_CATALOG.values()))
@@ -11,8 +16,11 @@ def create_gene(assigned_node_id: int) -> Gene:
     # Define physical rotation bounds.
     # Note: If you are using 360-degree spinning LiDARs, roll/pitch is sufficient.
     # If using directional solid-state LiDARs, you may need to swap 'roll' for 'yaw'.
-    pitch = random.randint(-90, 90)
-    roll = random.randint(-90, 90)
+    #
+    # Pitch and roll are drawn from a zero-mean Gaussian so fresh sensors start
+    # near flat/level (pitch = roll = 0); yaw stays uniform since heading is free.
+    pitch = _gaussian_angle(params.INIT_PITCH_ROLL_STD_DEG, 90)
+    roll = _gaussian_angle(params.INIT_PITCH_ROLL_STD_DEG, 90)
     yaw = random.randint(-180, 180)
 
     return Gene(

@@ -29,6 +29,10 @@ class Gene:
 
 MAX_SENSORS_PER_INDIVIDUAL: int = 4
 
+# Std-dev (degrees) of the zero-mean Gaussian used to initialize pitch and roll,
+# biasing fresh sensors toward flat/level (pitch = roll = 0). Larger => more tilt.
+INIT_PITCH_ROLL_STD_DEG: float = 30.0
+
 VALID_NODE_IDS: list[int] = sorted(MOUNTING_GRAPH.nodes())
 
 POPULATION_SIZE: int = 5000
