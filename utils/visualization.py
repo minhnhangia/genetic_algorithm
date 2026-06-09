@@ -369,7 +369,7 @@ def visualize_coverage_maps(individual: Individual, evaluator=None) -> None:
 def visualize_length_comparison(best_per_length, evaluator=None) -> None:
     """Compare the best layout found at each sensor count side by side.
 
-    Renders two things from a :class:`~custom_toolbox.best_per_length.BestPerLength`
+    Renders two things from a :class:`~utils.best_per_length.BestPerLength`
     record:
 
     * an HTML summary table -- one row per sensor count, with fitness, coverage
@@ -580,7 +580,7 @@ def visualize_evolution_per_length(per_length_evolution, metric: str = "max") ->
 
     Args:
         per_length_evolution: a populated
-            :class:`~custom_toolbox.per_length_evolution.PerLengthEvolution`.
+            :class:`~utils.per_length_evolution.PerLengthEvolution`.
         metric: ``"max"``, ``"avg"``, ``"min"``, or ``"count"``.
     """
     import matplotlib
@@ -622,5 +622,67 @@ def visualize_evolution_per_length(per_length_evolution, metric: str = "max") ->
     plt.ylabel(ylabel)
     plt.grid(True, alpha=0.25)
     plt.legend(title="Sensor count")
+    plt.tight_layout()
+    plt.show()
+
+
+def visualize_length_distribution(per_length_evolution, *, normalize: bool = False) -> None:
+    """Stacked-area chart of how many individuals have each sensor count per gen.
+
+    Shows the population's *composition* over the run: each band is one sensor
+    count, and the bands stack to the population size, so you can see selection
+    pressure shift the population toward (or away from) particular counts.
+
+    Args:
+        per_length_evolution: a populated
+            :class:`~utils.per_length_evolution.PerLengthEvolution`.
+        normalize: if ``True``, plot each generation as fractions of the
+            population (bands sum to 1.0) instead of raw counts.
+    """
+    import math
+
+    import matplotlib
+
+    if not hasattr(matplotlib.rcParams, "_get"):
+        matplotlib.rcParams._get = matplotlib.rcParams.get
+    import matplotlib.pyplot as plt
+
+    lengths = per_length_evolution.lengths
+    gens = per_length_evolution.generations
+    if not lengths:
+        display(HTML("<em>No per-length evolution recorded yet.</em>"))
+        return
+
+    # Counts per length; an absent count in a generation is 0 (not a gap).
+    counts = []
+    for length in lengths:
+        _, vals = per_length_evolution.series(length, "count")
+        counts.append([0.0 if math.isnan(v) else v for v in vals])
+
+    if normalize:
+        totals = [sum(col) for col in zip(*counts)]
+        counts = [
+            [(v / t if t else 0.0) for v, t in zip(row, totals)] for row in counts
+        ]
+
+    plt.figure(figsize=(10, 5))
+    plt.stackplot(
+        gens,
+        counts,
+        labels=[f"{length} sensor{'s' if length != 1 else ''}" for length in lengths],
+        alpha=0.85,
+    )
+    plt.title(
+        "Population composition by sensor count over generations"
+        + (" (normalized)" if normalize else "")
+    )
+    plt.xlabel("Generation")
+    plt.ylabel("Fraction of population" if normalize else "Number of individuals")
+    if gens:
+        plt.xlim(min(gens), max(gens))
+    if normalize:
+        plt.ylim(0.0, 1.0)
+    plt.grid(True, alpha=0.2)
+    plt.legend(title="Sensor count", loc="upper left")
     plt.tight_layout()
     plt.show()
