@@ -568,3 +568,59 @@ def visualize_evolution(logbook) -> None:
     plt.legend()
     plt.tight_layout()
     plt.show()
+
+
+def visualize_evolution_per_length(per_length_evolution, metric: str = "max") -> None:
+    """Plot the fitness evolution of each sensor count on a single chart.
+
+    One line per sensor count, tracking that count's ``metric`` fitness across
+    generations (default ``"max"`` -- the best layout of that size each gen).
+    Generations where a count was absent leave a gap in its line, so a count
+    that appears late or goes extinct is visible as such.
+
+    Args:
+        per_length_evolution: a populated
+            :class:`~custom_toolbox.per_length_evolution.PerLengthEvolution`.
+        metric: ``"max"``, ``"avg"``, ``"min"``, or ``"count"``.
+    """
+    import matplotlib
+
+    if not hasattr(matplotlib.rcParams, "_get"):
+        matplotlib.rcParams._get = matplotlib.rcParams.get
+    import matplotlib.pyplot as plt
+
+    lengths = per_length_evolution.lengths
+    if not lengths:
+        display(HTML("<em>No per-length evolution recorded yet.</em>"))
+        return
+
+    metric_label = {
+        "max": "best (max)",
+        "avg": "average",
+        "min": "minimum",
+        "count": "individual count",
+    }.get(metric, metric)
+
+    plt.figure(figsize=(10, 5))
+    for length in lengths:
+        gens, vals = per_length_evolution.series(length, metric)
+        # Markers help when only a few generations were recorded; with many
+        # generations a clean line is more legible.
+        marker = "o" if len(gens) <= 40 else None
+        plt.plot(
+            gens,
+            vals,
+            label=f"{length} sensor{'s' if length != 1 else ''}",
+            linewidth=2,
+            marker=marker,
+            markersize=4,
+        )
+
+    ylabel = "Fitness" if metric != "count" else "Individuals"
+    plt.title(f"Per-sensor-count evolution of {metric_label} fitness")
+    plt.xlabel("Generation")
+    plt.ylabel(ylabel)
+    plt.grid(True, alpha=0.25)
+    plt.legend(title="Sensor count")
+    plt.tight_layout()
+    plt.show()
