@@ -31,9 +31,9 @@ MAX_SENSORS_PER_INDIVIDUAL: int = 4
 
 VALID_NODE_IDS: list[int] = sorted(MOUNTING_GRAPH.nodes())
 
-POPULATION_SIZE: int = 1000
+POPULATION_SIZE: int = 5000
 
 # 0.5% of the population as elite individuals to carry over unchanged to the next generation
 ELITE_COUNT: int = max(1, round(POPULATION_SIZE * 0.005))
 
-NGEN: int = 100
+NGEN: int = 50

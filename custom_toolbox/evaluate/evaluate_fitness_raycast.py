@@ -72,7 +72,7 @@ class CoverageEvaluator:
         mesh_path: str = str(CHASSIS_MESH_PATH),
         *,
         # --- Maximum evaluation radius R_max (shared by both surfaces) ---
-        max_radius_m: float = 10.0,
+        max_radius_m: float = 6.0,
         # --- Ground grid: annular disk in polar coords (r, theta) at Z = 0 ---
         ground_r_min_m: float | None = 0.0,  # inner radius; None => auto from mesh
         ground_r_res_m: float = 0.1,
