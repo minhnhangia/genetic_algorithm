@@ -29,10 +29,6 @@ class Gene:
 
 MAX_SENSORS_PER_INDIVIDUAL: int = 4
 
-# Std-dev (degrees) of the zero-mean Gaussian used to initialize pitch and roll,
-# biasing fresh sensors toward flat/level (pitch = roll = 0). Larger => more tilt.
-INIT_PITCH_ROLL_STD_DEG: float = 30.0
-
 # Minimum Euclidean separation (meters) kept between sensors, so they don't
 # cluster together. Used both when initializing an individual and when the Add
 # mutation places a new sensor. Applied via Poisson-disk rejection sampling that
