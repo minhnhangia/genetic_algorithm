@@ -33,6 +33,13 @@ MAX_SENSORS_PER_INDIVIDUAL: int = 4
 # biasing fresh sensors toward flat/level (pitch = roll = 0). Larger => more tilt.
 INIT_PITCH_ROLL_STD_DEG: float = 30.0
 
+# Minimum Euclidean separation (meters) kept between sensors, so they don't
+# cluster together. Used both when initializing an individual and when the Add
+# mutation places a new sensor. Applied via Poisson-disk rejection sampling that
+# relaxes the threshold if it can't be met (see utils.select_spread_nodes).
+# Larger => more spread.
+MIN_SENSOR_SEPARATION_M: float = 0.3
+
 VALID_NODE_IDS: list[int] = sorted(MOUNTING_GRAPH.nodes())
 
 POPULATION_SIZE: int = 5000

@@ -2,6 +2,7 @@ import random
 
 from config import params, sensors
 from config.params import Gene, Population, Individual
+from custom_toolbox.utils.utils import select_spread_nodes
 
 
 def _gaussian_angle(std_deg: float, bound: int) -> int:
@@ -32,8 +33,8 @@ def create_individual(icls: type[Individual]) -> Individual:
     """Generates an individual with 1 to 4 active sensors."""
     num_sensors = random.randint(1, params.MAX_SENSORS_PER_INDIVIDUAL)
 
-    # Ensure unique node IDs for each sensor in the individual.
-    unique_nodes = random.sample(params.VALID_NODE_IDS, num_sensors)
+    # Unique node IDs, spread out so sensors don't start clustered together.
+    unique_nodes = select_spread_nodes(num_sensors, params.MIN_SENSOR_SEPARATION_M)
 
     genes = [create_gene(node_id) for node_id in unique_nodes]
 

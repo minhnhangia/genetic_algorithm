@@ -2,10 +2,11 @@ import random
 from enum import Enum
 
 from config.params import Gene, Individual, Population
-from config.params import VALID_NODE_IDS, MAX_SENSORS_PER_INDIVIDUAL
+from config.params import MAX_SENSORS_PER_INDIVIDUAL, MIN_SENSOR_SEPARATION_M
 from config.graph import MOUNTING_GRAPH
 from config.sensors import SENSOR_CATALOG
 from custom_toolbox.initialize import initialize
+from custom_toolbox.utils.utils import select_spread_nodes
 
 
 class AttributeMutationType(Enum):
@@ -31,15 +32,17 @@ def mutate_sensor_layout(individual: Individual) -> tuple[Individual]:
     # ---------------------------------------------------------
     # 1. Structural Mutation (Add / Drop) - 20% Chance
     # ---------------------------------------------------------
-    if random.random() < 0.20:
-        occupied_nodes = set(gene.node_id for gene in individual)
-
+    if random.random() < 0.10:
         # 50/50 split between Add and Drop
         if random.random() < 0.5 and len(individual) < MAX_SENSORS_PER_INDIVIDUAL:
-            available_nodes = list(set(VALID_NODE_IDS) - occupied_nodes)
-            if available_nodes:
-                new_node = random.choice(available_nodes)
-                individual.append(initialize.create_gene(new_node))
+            # Place the new sensor on a free node spread clear of the existing ones
+            new_nodes = select_spread_nodes(
+                1,
+                MIN_SENSOR_SEPARATION_M,
+                existing_nodes=[gene.node_id for gene in individual],
+            )
+            if new_nodes:
+                individual.append(initialize.create_gene(new_nodes[0]))
 
         elif len(individual) > 1:
             idx = random.randrange(len(individual))
