@@ -36,6 +36,17 @@ MAX_SENSORS_PER_INDIVIDUAL: int = 4
 # Larger => more spread.
 MIN_SENSOR_SEPARATION_M: float = 0.3
 
+# Minimum horizontal angular resolution (degrees) used when casting a sensor's
+# rays for fitness evaluation. A sensor whose native horizontal_res_deg is finer
+# than this is coarsened to this floor, dropping rays that oversample the azimuth
+# grid (e.g. a solid-state unit's 0.08 deg vs ~1 deg bins) without changing
+# coverage; sensors already coarser are untouched. This is the dominant eval-cost
+# knob -- raise it to go faster (with some fitness drift), lower it for fidelity.
+# Note: the *vertical* axis is deliberately NOT capped -- for a narrow-FOV
+# directional sensor it maps to radial ground resolution at grazing angles, where
+# fewer rays measurably under-counts coverage. See raycasting.local_rays.
+EVAL_MIN_HORIZONTAL_RES_DEG: float = 0.25
+
 VALID_NODE_IDS: list[int] = sorted(MOUNTING_GRAPH.nodes())
 
 POPULATION_SIZE: int = 5000

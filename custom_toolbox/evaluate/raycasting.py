@@ -18,6 +18,7 @@ from __future__ import annotations
 import numpy as np
 import open3d as o3d
 
+from config import params
 from config.graph import MOUNTING_GRAPH
 from config.params import Gene, Individual
 from config.sensors import Sensor, SensorType
@@ -105,9 +106,15 @@ class SensorRayModel:
         if cached is not None:
             return cached
 
-        num_h = max(
-            1, int(round(sensor.fov_horizontal_deg / sensor.horizontal_res_deg))
-        )
+        # Cap horizontal ray density to a minimum evaluation resolution. A
+        # sensor's native horizontal_res_deg can far oversample the azimuth grid
+        # (e.g. solid-state 0.08 deg vs the grid's ~1 deg bins), so coarsening it
+        # to this floor removes redundant rays without changing coverage. Sensors
+        # already coarser than the floor are unaffected, and because it's an
+        # angular resolution it auto-scales with FOV (a wide 360 deg sensor keeps
+        # proportionally more rays than a narrow one). The spec is untouched.
+        eval_h_res = max(sensor.horizontal_res_deg, params.EVAL_MIN_HORIZONTAL_RES_DEG)
+        num_h = max(1, int(round(sensor.fov_horizontal_deg / eval_h_res)))
         num_v = max(1, int(sensor.vertical_channels))
 
         # Full 360 deg FOV must not duplicate the seam ray (endpoint=False);
