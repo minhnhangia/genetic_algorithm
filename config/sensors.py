@@ -47,8 +47,8 @@ SENSOR_CATALOG = {
         range_m=120.0,
         vertical_channels=16,
         horizontal_res_deg=0.18,  # 10Hz
-        body_radius_m=0.038,
-        body_height_m=0.1032,
+        body_radius_m=0.0516,
+        body_height_m=0.076,
     ),
     # Hesai XT32
     SensorType.LIDAR_32_CH: Sensor(
@@ -59,8 +59,8 @@ SENSOR_CATALOG = {
         range_m=120.0,
         vertical_channels=32,
         horizontal_res_deg=0.18,  # 10Hz
-        body_radius_m=0.038,
-        body_height_m=0.1032,
+        body_radius_m=0.0516,
+        body_height_m=0.076,
     ),
     # Hesai ATX
     SensorType.SOLID_STATE: Sensor(
