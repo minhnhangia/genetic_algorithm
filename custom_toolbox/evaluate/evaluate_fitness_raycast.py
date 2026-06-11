@@ -79,13 +79,13 @@ class CoverageEvaluator:
         ground_azimuth_bins: int = 360,
         # --- Cylinder grid (height Z, azimuth theta at radius R_max) ---
         cyl_z_min_m: float = 0.0,
-        cyl_z_max_m: float = 3.0,
+        cyl_z_max_m: float = 2.0,
         cyl_z_res_m: float = 0.1,
         cyl_azimuth_bins: int = 360,
         # --- Fitness blend ---
-        w_cov: float = 0.8,
-        w_cost: float = 0.2,
-        max_budget: float = 5000.0,
+        w_cov: float = 0.7,
+        w_cost: float = 0.3,
+        max_budget: float = 10000.0,
     ) -> None:
         # Collaborators -------------------------------------------------------
         self._scene = ChassisScene(mesh_path)
