@@ -3,9 +3,9 @@ from enum import Enum
 
 
 class SensorType(Enum):
-    LIDAR_16_CH = 1  # e.g., 16-channel spinning LiDAR
-    LIDAR_32_CH = 2  # e.g., 32-channel spinning LiDAR
-    SOLID_STATE = 3  # e.g., Directional solid-state LiDAR
+    LIDAR_16_CH = 1  # e.g., Hesai XT16
+    LIDAR_32_CH = 2  # e.g., Hesai XT32
+    SOLID_STATE = 3  # e.g., Hesai ATX
 
 
 @dataclass(frozen=True)
@@ -38,37 +38,40 @@ class Sensor:
 
 
 SENSOR_CATALOG = {
+    # Hesai XT16
     SensorType.LIDAR_16_CH: Sensor(
         sensor_type=SensorType.LIDAR_16_CH,
-        price=399.0,
+        price=2600.0,
         fov_horizontal_deg=360.0,
-        fov_vertical_deg=30.0,
-        range_m=100.0,
+        fov_vertical_deg=30.0,  # Covers ±15°
+        range_m=120.0,
         vertical_channels=16,
-        horizontal_res_deg=0.2,
-        body_radius_m=0.052,  # ~103 mm diameter (VLP-16 class)
-        body_height_m=0.072,
+        horizontal_res_deg=0.18,  # 10Hz
+        body_radius_m=0.038,
+        body_height_m=0.1032,
     ),
+    # Hesai XT32
     SensorType.LIDAR_32_CH: Sensor(
         sensor_type=SensorType.LIDAR_32_CH,
-        price=799.0,
+        price=3520.0,
         fov_horizontal_deg=360.0,
-        fov_vertical_deg=40.0,
+        fov_vertical_deg=31.0,  # Covers -16° to +15°
         range_m=120.0,
         vertical_channels=32,
-        horizontal_res_deg=0.1,
-        body_radius_m=0.058,  # ~116 mm diameter (HDL-32 class)
-        body_height_m=0.090,
+        horizontal_res_deg=0.18,  # 10Hz
+        body_radius_m=0.038,
+        body_height_m=0.1032,
     ),
+    # Hesai ATX
     SensorType.SOLID_STATE: Sensor(
         sensor_type=SensorType.SOLID_STATE,
-        price=299.0,
+        price=1980.0,
         fov_horizontal_deg=120.0,
-        fov_vertical_deg=45.0,
-        range_m=80.0,
-        vertical_channels=1,
-        horizontal_res_deg=0.1,
-        body_radius_m=0.040,  # compact solid-state unit (cylinder proxy)
-        body_height_m=0.040,
+        fov_vertical_deg=20.0,
+        range_m=230.0,
+        vertical_channels=256,
+        horizontal_res_deg=0.08,
+        body_radius_m=0.050,S
+        body_height_m=0.030,
     ),
 }
