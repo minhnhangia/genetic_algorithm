@@ -71,7 +71,7 @@ SENSOR_CATALOG = {
         range_m=230.0,
         vertical_channels=256,
         horizontal_res_deg=0.08,
-        body_radius_m=0.050,S
+        body_radius_m=0.050,
         body_height_m=0.030,
     ),
 }
