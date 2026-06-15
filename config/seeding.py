@@ -79,7 +79,7 @@ SEED_INDIVIDUALS = [
             yaw=-125,
         ),
         Gene(
-            sensor=sensors.SENSOR_CATALOG[sensors.SensorType.LIDAR_16_CH],
+            sensor=sensors.SENSOR_CATALOG[sensors.SensorType.SOLID_STATE],
             node_id=5022,
             pitch=+27,
             roll=-11,

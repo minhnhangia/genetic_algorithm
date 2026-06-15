@@ -53,7 +53,7 @@ def mutate_sensor_layout(individual: Individual) -> tuple[Individual]:
     # ---------------------------------------------------------
     # Evaluate EVERY sensor independently for a chance to mutate
     for gene in individual:
-        if random.random() < 0.30:  # 30% chance per gene
+        if random.random() < 0.50:  # 50% chance per gene
 
             mutation_type = random.choice(list(AttributeMutationType))
 
