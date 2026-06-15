@@ -1,8 +1,8 @@
 """Reusable evolution driver, so a full GA run is a single call.
 
-The notebook's evolution loop is extracted here verbatim (both selection paths)
-so it can be invoked more than once -- in particular to run the two selection
-strategies back to back for a controlled comparison (see ``utils.comparison``).
+The notebook's evolution loop is extracted here (all selection paths) so it can
+be invoked more than once -- in particular to run the selection strategies back
+to back for a controlled comparison (see ``utils.comparison``).
 
 ``run_evolution`` deep-copies the initial population it is handed and, if given a
 ``seed``, reseeds the RNG before the loop. Run two strategies from the *same*
@@ -17,7 +17,7 @@ from __future__ import annotations
 import random
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 from deap import tools
@@ -39,6 +39,43 @@ _STRATEGY_LABELS = {
 }
 
 
+@dataclass
+class RunResult:
+    """Everything one GA run produces, for downstream visualisation."""
+
+    label: str
+    logbook: tools.Logbook
+    hof: tools.HallOfFame
+    best_per_length: BestPerLength
+    per_length_evolution: PerLengthEvolution
+    population: list
+
+
+# ---------------------------------------------------------------------------
+# Selection-operator resolution
+#
+# Prefer the toolbox registrations (so a custom tournsize set in the notebook's
+# Selection cell applies), but fall back to module defaults so a stale or
+# never-run Selection cell can't break the run.
+# ---------------------------------------------------------------------------
+def _resolve_tournament(toolbox: Any) -> Callable[[list, int], list]:
+    """The toolbox's tournament ``select``, or a tournsize-3 default."""
+    op = getattr(toolbox, "select", None)
+    if op is not None:
+        return op
+    return lambda pop, k: tools.selTournament(pop, k, tournsize=3)
+
+
+def _resolve_niching(toolbox: Any) -> Callable[[list, int], list]:
+    """The toolbox's ``select_niching``, or the default length-niching operator."""
+    op = getattr(toolbox, "select_niching", None)
+    if op is not None:
+        return op
+    from custom_toolbox.select.select_length_niching import sel_length_niching
+
+    return sel_length_niching
+
+
 def _per_length_elites(population: list, elite_count: int) -> list:
     """The best ``elite_count`` individuals of *each* sensor count (length).
 
@@ -58,16 +95,88 @@ def _per_length_elites(population: list, elite_count: int) -> list:
     return elites
 
 
-@dataclass
-class RunResult:
-    """Everything one GA run produces, for downstream visualisation."""
+# ---------------------------------------------------------------------------
+# Per-generation building blocks (shared variation + evaluation, one step per
+# selection scheme). Each step returns ``(next_population, nevals)``.
+# ---------------------------------------------------------------------------
+def _apply_variation(offspring: list, toolbox: Any, cx_prob: float) -> None:
+    """Crossover (with probability ``cx_prob``) then mutate every individual.
 
-    label: str
-    logbook: tools.Logbook
-    hof: tools.HallOfFame
-    best_per_length: BestPerLength
-    per_length_evolution: PerLengthEvolution
-    population: list
+    Operates in place (DEAP convention), invalidating the fitness of everything
+    that may have changed so the next evaluation re-scores it.
+    """
+    for child1, child2 in zip(offspring[::2], offspring[1::2]):
+        if random.random() < cx_prob:
+            toolbox.mate(child1, child2)
+            del child1.fitness.values
+            del child2.fitness.values
+
+    for mutant in offspring:
+        toolbox.mutate(mutant)
+        del mutant.fitness.values
+
+
+def _evaluate_invalid(individuals: list, toolbox: Any) -> int:
+    """Evaluate, in place, every individual whose fitness was invalidated.
+
+    Returns the number evaluated -- the generation's ``nevals``.
+    """
+    invalid = [ind for ind in individuals if not ind.fitness.valid]
+    for ind, fit in zip(invalid, toolbox.map(toolbox.evaluate, invalid)):
+        ind.fitness.values = fit
+    return len(invalid)
+
+
+def _generational_step(
+    population: list,
+    toolbox: Any,
+    *,
+    cx_prob: float,
+    elite_count: int,
+    per_length_elite: bool,
+    select_tournament: Callable[[list, int], list],
+) -> tuple[list, int]:
+    """One generation of the elitism + tournament scheme.
+
+    Elites are carried over unchanged -- globally best ``elite_count``, or
+    ``elite_count`` per sensor count when ``per_length_elite`` (the only
+    difference between the two tournament strategies). The rest of the slots are
+    filled by tournament, varied, and evaluated. list size is preserved.
+    """
+    if per_length_elite:
+        elites = _per_length_elites(population, elite_count)
+    else:
+        elites = tools.selBest(population, elite_count)
+    elites = list(map(toolbox.clone, elites))
+
+    # Tournament fills the rest globally. Size by the actual elite count
+    # (per-length elitism carries up to elite_count * #lengths individuals).
+    n_offspring = max(0, len(population) - len(elites))
+    offspring = list(map(toolbox.clone, select_tournament(population, n_offspring)))
+
+    _apply_variation(offspring, toolbox, cx_prob)
+    nevals = _evaluate_invalid(offspring, toolbox)
+    return offspring + elites, nevals
+
+
+def _length_niching_step(
+    population: list,
+    toolbox: Any,
+    *,
+    cx_prob: float,
+    mu: int,
+    select_niching: Callable[[list, int], list],
+) -> tuple[list, int]:
+    """One generation of the (mu+lambda) length-niching scheme.
+
+    Every parent breeds once (lambda = ``len(population)``); survivors are then
+    chosen by length niching over the *combined* parent+child pool, so each
+    sensor count keeps its own breeding room. Returns ``mu`` survivors.
+    """
+    offspring = list(map(toolbox.clone, population))
+    _apply_variation(offspring, toolbox, cx_prob)
+    nevals = _evaluate_invalid(offspring, toolbox)
+    return select_niching(population + offspring, mu), nevals
 
 
 def _make_stats() -> tools.Statistics:
@@ -99,8 +208,9 @@ def run_evolution(
         initial_population: the seeded starting population. Deep-copied here, so
             the caller's list is left untouched and multiple runs are independent.
         toolbox: a DEAP toolbox with ``clone``, ``evaluate``, ``mate``,
-            ``mutate``, ``map``, ``select`` (tournament) and ``select_niching``
-            registered (exactly the notebook's toolbox).
+            ``mutate``, ``map`` and ``select`` (tournament) registered. For the
+            ``LENGTH_NICHING`` strategy a ``select_niching`` registration is used
+            if present, otherwise the default length-niching operator is imported.
         strategy: which selection scheme to use -- one of ``TOURNAMENT`` (global
             elitism + tournament), ``TOURNAMENT_PER_LENGTH_ELITE`` (per-length
             elitism + tournament), or ``LENGTH_NICHING`` ((mu+lambda) niching).
@@ -127,17 +237,12 @@ def run_evolution(
     # Independent copy so repeated runs don't share (and mutate) individuals.
     population = deepcopy(initial_population)
 
-    # Resolve selection operators. Prefer the toolbox registrations (so a custom
-    # tournsize set in the Selection cell applies), but fall back to module
-    # defaults so a stale or never-run Selection cell can't break the run.
-    select_tournament = getattr(toolbox, "select", None)
-    if select_tournament is None:
-        select_tournament = lambda pop, k: tools.selTournament(pop, k, tournsize=3)
-    select_niching = getattr(toolbox, "select_niching", None)
-    if select_niching is None:
-        from custom_toolbox.select.select_length_niching import sel_length_niching
-
-        select_niching = sel_length_niching
+    # Resolve only the selection operator the chosen strategy needs.
+    per_length_elite = strategy == TOURNAMENT_PER_LENGTH_ELITE
+    if strategy == LENGTH_NICHING:
+        select_niching = _resolve_niching(toolbox)
+    else:
+        select_tournament = _resolve_tournament(toolbox)
 
     stats = _make_stats()
     logbook = tools.Logbook()
@@ -148,11 +253,7 @@ def run_evolution(
     per_length_evolution = PerLengthEvolution()
 
     # Initial baseline evaluation.
-    invalid_ind = [ind for ind in population if not ind.fitness.valid]
-    fitnesses = list(toolbox.map(toolbox.evaluate, invalid_ind))
-    for ind, fit in zip(invalid_ind, fitnesses):
-        ind.fitness.values = fit
-
+    _evaluate_invalid(population, toolbox)
     hof.update(population)
     best_per_length.update(population)
 
@@ -161,66 +262,29 @@ def run_evolution(
 
     for gen in range(ngen):
         if strategy == LENGTH_NICHING:
-            # ---- (mu+lambda) with length-niching survivor selection ----
-            # Reproduction: every parent breeds once -> lambda = population_size.
-            offspring = list(map(toolbox.clone, population))
-
-            for child1, child2 in zip(offspring[::2], offspring[1::2]):
-                if random.random() < cx_prob:
-                    toolbox.mate(child1, child2)
-                    del child1.fitness.values
-                    del child2.fitness.values
-
-            for mutant in offspring:
-                toolbox.mutate(mutant)
-                del mutant.fitness.values
-
-            invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-            fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
-            for ind, fit in zip(invalid_ind, fitnesses):
-                ind.fitness.values = fit
-
-            # Survivor selection over the COMBINED parent+child pool.
-            population[:] = select_niching(population + offspring, population_size)
-
+            new_population, nevals = _length_niching_step(
+                population,
+                toolbox,
+                cx_prob=cx_prob,
+                mu=population_size,
+                select_niching=select_niching,
+            )
         else:
-            # ---- Generational scheme: elitism + tournament ----
-            # Elitism scope is the only difference between the two tournament
-            # strategies: globally best `elite_count`, or `elite_count` per length.
-            if strategy == TOURNAMENT_PER_LENGTH_ELITE:
-                elites = _per_length_elites(population, elite_count)
-            else:
-                elites = tools.selBest(population, elite_count)
-            elites = list(map(toolbox.clone, elites))
-
-            # Tournament fills the rest globally. Size by the actual elite count
-            # (per-length elitism carries up to elite_count * #lengths individuals).
-            n_offspring = max(0, len(population) - len(elites))
-            offspring = select_tournament(population, n_offspring)
-            offspring = list(map(toolbox.clone, offspring))
-
-            for child1, child2 in zip(offspring[::2], offspring[1::2]):
-                if random.random() < cx_prob:
-                    toolbox.mate(child1, child2)
-                    del child1.fitness.values
-                    del child2.fitness.values
-
-            for mutant in offspring:
-                toolbox.mutate(mutant)
-                del mutant.fitness.values
-
-            invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-            fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
-            for ind, fit in zip(invalid_ind, fitnesses):
-                ind.fitness.values = fit
-
-            population[:] = offspring + elites
+            new_population, nevals = _generational_step(
+                population,
+                toolbox,
+                cx_prob=cx_prob,
+                elite_count=elite_count,
+                per_length_elite=per_length_elite,
+                select_tournament=select_tournament,
+            )
+        population[:] = new_population
 
         hof.update(population)
         best_per_length.update(population)
 
         record = stats.compile(population)
-        logbook.record(gen=gen, nevals=len(invalid_ind), **record)
+        logbook.record(gen=gen, nevals=nevals, **record)
         per_length_evolution.record(gen, population)
 
         if verbose:
