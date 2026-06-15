@@ -27,6 +27,37 @@ from utils.best_per_length import BestPerLength
 from utils.per_length_evolution import PerLengthEvolution
 
 
+# Selection strategies recognised by run_evolution.
+TOURNAMENT = "tournament"  # global elitism + tournament (the original scheme)
+TOURNAMENT_PER_LENGTH_ELITE = "tournament_per_length_elite"  # per-length elitism + tournament
+LENGTH_NICHING = "length_niching"  # (mu+lambda) length-niching survivor selection
+
+_STRATEGY_LABELS = {
+    TOURNAMENT: "Tournament + global elite",
+    TOURNAMENT_PER_LENGTH_ELITE: "Tournament + per-length elite",
+    LENGTH_NICHING: "Length niching",
+}
+
+
+def _per_length_elites(population: list, elite_count: int) -> list:
+    """The best ``elite_count`` individuals of *each* sensor count (length).
+
+    Contrast with global elitism (``tools.selBest(population, elite_count)``),
+    which keeps the ``elite_count`` best overall and so protects only the
+    currently-dominant length. This buckets by ``len(individual)`` and keeps each
+    length's own best, so every sensor count carries champions forward. A length
+    with fewer than ``elite_count`` members contributes all of them. Returns
+    references (the caller clones).
+    """
+    by_length: dict[int, list] = {}
+    for ind in population:
+        by_length.setdefault(len(ind), []).append(ind)
+    elites: list = []
+    for members in by_length.values():
+        elites.extend(tools.selBest(members, min(elite_count, len(members))))
+    return elites
+
+
 @dataclass
 class RunResult:
     """Everything one GA run produces, for downstream visualisation."""
@@ -53,7 +84,7 @@ def run_evolution(
     initial_population: list,
     toolbox: Any,
     *,
-    use_length_niching: bool,
+    strategy: str = TOURNAMENT,
     label: str | None = None,
     ngen: int = params.NGEN,
     population_size: int = params.POPULATION_SIZE,
@@ -70,8 +101,9 @@ def run_evolution(
         toolbox: a DEAP toolbox with ``clone``, ``evaluate``, ``mate``,
             ``mutate``, ``map``, ``select`` (tournament) and ``select_niching``
             registered (exactly the notebook's toolbox).
-        use_length_niching: ``True`` -> (mu+lambda) length-niching survivor
-            selection; ``False`` -> the original elitism + tournament scheme.
+        strategy: which selection scheme to use -- one of ``TOURNAMENT`` (global
+            elitism + tournament), ``TOURNAMENT_PER_LENGTH_ELITE`` (per-length
+            elitism + tournament), or ``LENGTH_NICHING`` ((mu+lambda) niching).
         label: human-readable name for plots; defaults from the strategy.
         ngen / population_size / elite_count / cx_prob: GA settings (default to
             ``config.params``); override for a cheaper comparison run.
@@ -82,8 +114,12 @@ def run_evolution(
         A :class:`RunResult` with the logbook, hall of fame, per-length trackers,
         and the final population.
     """
+    if strategy not in _STRATEGY_LABELS:
+        raise ValueError(
+            f"Unknown strategy {strategy!r}; expected one of {list(_STRATEGY_LABELS)}."
+        )
     if label is None:
-        label = "Length niching" if use_length_niching else "Tournament + elitism"
+        label = _STRATEGY_LABELS[strategy]
 
     if seed is not None:
         random.seed(seed)
@@ -121,11 +157,10 @@ def run_evolution(
     best_per_length.update(population)
 
     if verbose:
-        strategy = "LENGTH NICHING (mu+lambda)" if use_length_niching else "tournament + elitism"
-        print(f"=== Run '{label}'  |  selection: {strategy} ===")
+        print(f"=== Run '{label}'  |  strategy: {strategy} ===")
 
     for gen in range(ngen):
-        if use_length_niching:
+        if strategy == LENGTH_NICHING:
             # ---- (mu+lambda) with length-niching survivor selection ----
             # Reproduction: every parent breeds once -> lambda = population_size.
             offspring = list(map(toolbox.clone, population))
@@ -149,11 +184,19 @@ def run_evolution(
             population[:] = select_niching(population + offspring, population_size)
 
         else:
-            # ---- Original generational scheme: global elitism + tournament ----
-            elites = tools.selBest(population, elite_count)
+            # ---- Generational scheme: elitism + tournament ----
+            # Elitism scope is the only difference between the two tournament
+            # strategies: globally best `elite_count`, or `elite_count` per length.
+            if strategy == TOURNAMENT_PER_LENGTH_ELITE:
+                elites = _per_length_elites(population, elite_count)
+            else:
+                elites = tools.selBest(population, elite_count)
             elites = list(map(toolbox.clone, elites))
 
-            offspring = select_tournament(population, len(population) - elite_count)
+            # Tournament fills the rest globally. Size by the actual elite count
+            # (per-length elitism carries up to elite_count * #lengths individuals).
+            n_offspring = max(0, len(population) - len(elites))
+            offspring = select_tournament(population, n_offspring)
             offspring = list(map(toolbox.clone, offspring))
 
             for child1, child2 in zip(offspring[::2], offspring[1::2]):
