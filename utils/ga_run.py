@@ -99,15 +99,20 @@ def _per_length_elites(population: list, elite_count: int) -> list:
 # Per-generation building blocks (shared variation + evaluation, one step per
 # selection scheme). Each step returns ``(next_population, nevals)``.
 # ---------------------------------------------------------------------------
-def _apply_variation(offspring: list, toolbox: Any, cx_prob: float) -> None:
-    """Crossover (with probability ``cx_prob``) then mutate every individual.
+def _apply_variation(
+    offspring: list, toolbox: Any, cx_prob: float, mate: Callable
+) -> None:
+    """Crossover (with probability ``cx_prob``, via ``mate``) then mutate every
+    individual.
 
     Operates in place (DEAP convention), invalidating the fitness of everything
-    that may have changed so the next evaluation re-scores it.
+    that may have changed so the next evaluation re-scores it. ``mate`` is passed
+    explicitly (rather than read from ``toolbox``) so a run can compare crossover
+    operators without re-registering the shared toolbox.
     """
     for child1, child2 in zip(offspring[::2], offspring[1::2]):
         if random.random() < cx_prob:
-            toolbox.mate(child1, child2)
+            mate(child1, child2)
             del child1.fitness.values
             del child2.fitness.values
 
@@ -135,6 +140,7 @@ def _generational_step(
     elite_count: int,
     per_length_elite: bool,
     select_tournament: Callable[[list, int], list],
+    mate: Callable,
 ) -> tuple[list, int]:
     """One generation of the elitism + tournament scheme.
 
@@ -154,7 +160,7 @@ def _generational_step(
     n_offspring = max(0, len(population) - len(elites))
     offspring = list(map(toolbox.clone, select_tournament(population, n_offspring)))
 
-    _apply_variation(offspring, toolbox, cx_prob)
+    _apply_variation(offspring, toolbox, cx_prob, mate)
     nevals = _evaluate_invalid(offspring, toolbox)
     return offspring + elites, nevals
 
@@ -166,6 +172,7 @@ def _length_niching_step(
     cx_prob: float,
     mu: int,
     select_niching: Callable[[list, int], list],
+    mate: Callable,
 ) -> tuple[list, int]:
     """One generation of the (mu+lambda) length-niching scheme.
 
@@ -174,7 +181,7 @@ def _length_niching_step(
     sensor count keeps its own breeding room. Returns ``mu`` survivors.
     """
     offspring = list(map(toolbox.clone, population))
-    _apply_variation(offspring, toolbox, cx_prob)
+    _apply_variation(offspring, toolbox, cx_prob, mate)
     nevals = _evaluate_invalid(offspring, toolbox)
     return select_niching(population + offspring, mu), nevals
 
@@ -199,6 +206,7 @@ def run_evolution(
     population_size: int = params.POPULATION_SIZE,
     elite_count: int = params.ELITE_COUNT,
     cx_prob: float = 0.7,
+    mate: Callable | None = None,
     seed: int | None = None,
     verbose: bool = True,
 ) -> RunResult:
@@ -217,6 +225,9 @@ def run_evolution(
         label: human-readable name for plots; defaults from the strategy.
         ngen / population_size / elite_count / cx_prob: GA settings (default to
             ``config.params``); override for a cheaper comparison run.
+        mate: crossover operator to use this run; defaults to ``toolbox.mate``.
+            Pass an explicit operator to compare crossovers without re-registering
+            the shared toolbox (everything else held fixed).
         seed: if given, ``random.seed(seed)`` before the loop so runs are
             reproducible and two strategies share an identical RNG start.
 
@@ -236,6 +247,9 @@ def run_evolution(
 
     # Independent copy so repeated runs don't share (and mutate) individuals.
     population = deepcopy(initial_population)
+
+    # Crossover operator: explicit override or the toolbox default.
+    mate_op = mate if mate is not None else toolbox.mate
 
     # Resolve only the selection operator the chosen strategy needs.
     per_length_elite = strategy == TOURNAMENT_PER_LENGTH_ELITE
@@ -268,6 +282,7 @@ def run_evolution(
                 cx_prob=cx_prob,
                 mu=population_size,
                 select_niching=select_niching,
+                mate=mate_op,
             )
         else:
             new_population, nevals = _generational_step(
@@ -277,6 +292,7 @@ def run_evolution(
                 elite_count=elite_count,
                 per_length_elite=per_length_elite,
                 select_tournament=select_tournament,
+                mate=mate_op,
             )
         population[:] = new_population
 
