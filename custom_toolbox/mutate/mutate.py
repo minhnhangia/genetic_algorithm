@@ -6,6 +6,7 @@ from config.params import MAX_SENSORS_PER_INDIVIDUAL, MIN_SENSOR_SEPARATION_M
 from config.graph import MOUNTING_GRAPH
 from config.sensors import SENSOR_CATALOG
 from custom_toolbox.initialize import initialize
+from custom_toolbox.mutate.tiers import Tier, TIER_CONFIGS
 from custom_toolbox.utils.utils import select_spread_nodes
 
 
@@ -15,24 +16,33 @@ class AttributeMutationType(Enum):
     HARDWARE = "hardware"
 
 
+def _slide_to_neighbor(node_id: int, occupied: set[int], hops: int) -> int:
+    """Walk up to ``hops`` graph hops through unoccupied neighbors; stop early if
+    a node has no free neighbor. Returns the final node id."""
+    for _ in range(hops):
+        candidates = [n for n in MOUNTING_GRAPH.neighbors(node_id) if n not in occupied]
+        if not candidates:
+            break
+        occupied.discard(node_id)
+        node_id = random.choice(candidates)
+        occupied.add(node_id)
+    return node_id
+
+
 def mutate_sensor_layout(individual: Individual) -> tuple[Individual]:
-    """
-    Structural Mutation (Add / Drop) - 20% Chance:
-    - 50/50 split between Add and Drop
-    - Add: If < MAX_SENSORS_PER_INDIVIDUAL, add a new sensor at a random unoccupied node.
-    - Drop: If > 1 sensor exists, remove a random sensor from the layout.
+    """Tier-aware mutation. Perturbation intensity (structural/attr probabilities,
+    angle sigma, position hops) is read from the individual's ``mutation_tier``;
+    defaults to MEDIUM (the original constants) when untagged.
 
-    Attribute Mutation (Jitter / Move / Hardware) - 30% Chance per Gene:
-    - Applies one of three mutation types to the individual's sensor layout:
-        1. ANGLES: Jitter the pitch/roll/yaw of a random sensor within mechanical limits (±90° pitch, ±90° roll, ±180° yaw)
-        2. POSITION: Slide a sensor to a graph-adjacent neighbor node while preserving its angles (no-op if all neighbors are occupied)
-        3. HARDWARE: Swap the sensor type of a random gene for a different model from the catalog, keeping node and angles the same.
+    - Structural: add a sensor at a spread free node, or drop one.
+    - ANGLES: Gaussian jitter on pitch/roll/yaw within mechanical limits.
+    - POSITION: slide a sensor up to ``position_hops`` unoccupied graph neighbors.
+    - HARDWARE: swap the sensor model.
     """
+    cfg = TIER_CONFIGS[getattr(individual, "mutation_tier", Tier.MEDIUM)]
 
-    # ---------------------------------------------------------
-    # 1. Structural Mutation (Add / Drop) - 20% Chance
-    # ---------------------------------------------------------
-    if random.random() < 0.10:
+    # 1. Structural Mutation (Add / Drop)
+    if random.random() < cfg.structural_prob:
         # 50/50 split between Add and Drop
         if random.random() < 0.5 and len(individual) < MAX_SENSORS_PER_INDIVIDUAL:
             # Place the new sensor on a free node spread clear of the existing ones
@@ -48,38 +58,30 @@ def mutate_sensor_layout(individual: Individual) -> tuple[Individual]:
             idx = random.randrange(len(individual))
             individual.pop(idx)
 
-    # ---------------------------------------------------------
-    # 2. Attribute Mutation (Jitter / Move)
-    # ---------------------------------------------------------
-    # Evaluate EVERY sensor independently for a chance to mutate
+    # 2. Attribute Mutation (Jitter / Move / Hardware), per gene
+    sigma = cfg.angle_sigma
     for gene in individual:
-        if random.random() < 0.50:  # 50% chance per gene
+        if random.random() < cfg.attr_prob:
 
             mutation_type = random.choice(list(AttributeMutationType))
 
             if mutation_type == AttributeMutationType.ANGLES:
-                # Your Gaussian micro-adjustments
                 gene.pitch = int(
-                    round(max(-90, min(90, gene.pitch + random.gauss(0, 5.0))))
+                    round(max(-90, min(90, gene.pitch + random.gauss(0, sigma))))
                 )
                 gene.roll = int(
-                    round(max(-90, min(90, gene.roll + random.gauss(0, 5.0))))
+                    round(max(-90, min(90, gene.roll + random.gauss(0, sigma))))
                 )
                 gene.yaw = int(
-                    round(max(-180, min(180, gene.yaw + random.gauss(0, 5.0))))
+                    round(max(-180, min(180, gene.yaw + random.gauss(0, sigma))))
                 )
 
             elif mutation_type == AttributeMutationType.POSITION:
-                # Slide to a graph-adjacent neighbor that is not already occupied.
-                occupied_nodes = set(g.node_id for g in individual)
-                neighbor_candidates = [
-                    n
-                    for n in MOUNTING_GRAPH.neighbors(gene.node_id)
-                    if n not in occupied_nodes
-                ]
-                if neighbor_candidates:
-                    gene.node_id = random.choice(neighbor_candidates)
-                # If all neighbors are occupied or the node is isolated, leave unchanged.
+                # Slide up to cfg.position_hops unoccupied graph neighbors.
+                occupied = set(g.node_id for g in individual)
+                gene.node_id = _slide_to_neighbor(
+                    gene.node_id, occupied, cfg.position_hops
+                )
 
             elif mutation_type == AttributeMutationType.HARDWARE:
                 # Swap the sensor out for a different model from the catalog

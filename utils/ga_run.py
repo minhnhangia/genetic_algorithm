@@ -26,10 +26,11 @@ import config.params as params
 from utils.best_per_length import BestPerLength
 from utils.per_length_evolution import PerLengthEvolution
 
-
 # Selection strategies recognised by run_evolution.
 TOURNAMENT = "tournament"  # global elitism + tournament (the original scheme)
-TOURNAMENT_PER_LENGTH_ELITE = "tournament_per_length_elite"  # per-length elitism + tournament
+TOURNAMENT_PER_LENGTH_ELITE = (
+    "tournament_per_length_elite"  # per-length elitism + tournament
+)
 LENGTH_NICHING = "length_niching"  # (mu+lambda) length-niching survivor selection
 
 _STRATEGY_LABELS = {
@@ -141,6 +142,7 @@ def _generational_step(
     per_length_elite: bool,
     select_tournament: Callable[[list, int], list],
     mate: Callable,
+    classify_tiers: Callable[[list], None] | None = None,
 ) -> tuple[list, int]:
     """One generation of the elitism + tournament scheme.
 
@@ -149,6 +151,10 @@ def _generational_step(
     difference between the two tournament strategies). The rest of the slots are
     filled by tournament, varied, and evaluated. list size is preserved.
     """
+    # Tag tiers before cloning so offspring inherit their parent's tier.
+    if classify_tiers is not None:
+        classify_tiers(population)
+
     if per_length_elite:
         elites = _per_length_elites(population, elite_count)
     else:
@@ -173,6 +179,7 @@ def _length_niching_step(
     mu: int,
     select_niching: Callable[[list, int], list],
     mate: Callable,
+    classify_tiers: Callable[[list], None] | None = None,
 ) -> tuple[list, int]:
     """One generation of the (mu+lambda) length-niching scheme.
 
@@ -180,6 +187,9 @@ def _length_niching_step(
     chosen by length niching over the *combined* parent+child pool, so each
     sensor count keeps its own breeding room. Returns ``mu`` survivors.
     """
+    if classify_tiers is not None:
+        classify_tiers(population)
+
     offspring = list(map(toolbox.clone, population))
     _apply_variation(offspring, toolbox, cx_prob, mate)
     nevals = _evaluate_invalid(offspring, toolbox)
@@ -207,6 +217,7 @@ def run_evolution(
     elite_count: int = params.ELITE_COUNT,
     cx_prob: float = 0.7,
     mate: Callable | None = None,
+    tiered_mutation: bool = False,
     seed: int | None = None,
     verbose: bool = True,
 ) -> RunResult:
@@ -228,6 +239,9 @@ def run_evolution(
         mate: crossover operator to use this run; defaults to ``toolbox.mate``.
             Pass an explicit operator to compare crossovers without re-registering
             the shared toolbox (everything else held fixed).
+        tiered_mutation: if True, split the population into superior/medium/inferior
+            tiers each generation (global fitness rank) and let the mutation
+            operator scale perturbation per tier. Off = uniform mutation (baseline).
         seed: if given, ``random.seed(seed)`` before the loop so runs are
             reproducible and two strategies share an identical RNG start.
 
@@ -250,6 +264,14 @@ def run_evolution(
 
     # Crossover operator: explicit override or the toolbox default.
     mate_op = mate if mate is not None else toolbox.mate
+
+    # Per-generation tier tagging for fitness-tiered mutation (None = uniform).
+    if tiered_mutation:
+        from custom_toolbox.mutate.tiers import assign_fitness_tiers
+
+        classify_tiers = assign_fitness_tiers
+    else:
+        classify_tiers = None
 
     # Resolve only the selection operator the chosen strategy needs.
     per_length_elite = strategy == TOURNAMENT_PER_LENGTH_ELITE
@@ -283,6 +305,7 @@ def run_evolution(
                 mu=population_size,
                 select_niching=select_niching,
                 mate=mate_op,
+                classify_tiers=classify_tiers,
             )
         else:
             new_population, nevals = _generational_step(
@@ -293,6 +316,7 @@ def run_evolution(
                 per_length_elite=per_length_elite,
                 select_tournament=select_tournament,
                 mate=mate_op,
+                classify_tiers=classify_tiers,
             )
         population[:] = new_population
 
