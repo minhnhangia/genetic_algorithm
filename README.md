@@ -54,8 +54,13 @@ The current evaluator is intentionally mocked, so the code is best treated as a 
 The repository does not currently include a dependency lockfile, so install the runtime packages manually:
 
 ```bash
-pip install deap numpy matplotlib ipython jupyter
+pip install deap numpy matplotlib ipython jupyter nbstripout
+pip install networkx "pyglet<2" "trimesh[easy]" open3d
 ```
+
+https://pytorch.org/get-started/locally/
+
+https://pytorch-geometric.readthedocs.io/en/stable/install/installation.html
 
 ### Run the notebook
 
