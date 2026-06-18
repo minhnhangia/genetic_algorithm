@@ -86,10 +86,17 @@ class CoverageEvaluator:
         w_cov: float = 0.7,
         w_cost: float = 0.3,
         max_budget: float = 10000.0,
+        mounting_graph=None,
     ) -> None:
         # Collaborators -------------------------------------------------------
+        # ``mounting_graph`` lets one evaluator be built per robot (its own chassis
+        # mesh + its own mounting graph); ``None`` falls back to the global graph.
         self._scene = ChassisScene(mesh_path)
-        self._rays = SensorRayModel()
+        self._rays = (
+            SensorRayModel(mounting_graph)
+            if mounting_graph is not None
+            else SensorRayModel()
+        )
 
         self.max_radius = float(max_radius_m)
         r_min = (

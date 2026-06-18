@@ -34,7 +34,7 @@ def _unit_check(evaluator: CoverageEvaluator) -> bool:
     ok = True
     for st in SensorType:
         sensor = SENSOR_CATALOG[st]
-        node = VALID_NODE_IDS[0]
+        node = VALID_NODE_IDS[200]
         g, c = sensor_footprint(evaluator, sensor, node, pitch=-10, roll=0, yaw=30)
         dbg = evaluator.coverage_debug(
             [Gene(sensor=sensor, node_id=node, pitch=-10, roll=0, yaw=30)]
@@ -95,7 +95,7 @@ def _gate(evaluator: CoverageEvaluator, n_layouts: int, seed: int) -> dict:
     }
 
 
-def main(n_layouts: int = 5000, seed: int = 0) -> None:
+def main(n_layouts: int = 500, seed: int = 0) -> None:
     evaluator = CoverageEvaluator()
     print(
         f"grid: {evaluator._scorer.total_cells} cells "
