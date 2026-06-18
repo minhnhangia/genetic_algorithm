@@ -7,7 +7,7 @@ import networkx as nx
 import open3d as o3d
 import os
 
-GRAPH_SAVE_PATH = pathlib.Path(__file__).parent / "data" / "mounting_graph.pkl"
+GRAPH_SAVE_PATH = pathlib.Path(__file__).parent / "data" / "mounting_graph_test.pkl"
 
 
 def save_graph(graph: nx.Graph, path: pathlib.Path = GRAPH_SAVE_PATH) -> None:
@@ -24,6 +24,14 @@ def save_graph(graph: nx.Graph, path: pathlib.Path = GRAPH_SAVE_PATH) -> None:
 BASE_PKG_DIR = os.path.expanduser(
     "~/genetic_algorithm_ws/ros2_ws/src/robotnik_description"
 )
+# "rbkairos": "rbkairos/rbkairos_chassis.stl",
+# "rbrobout": "rbrobout/rbrobout_top_cover.stl",
+# "rbsummit_xl": "rbsummit/rbsummit_xl_chassis_simple.stl",
+# "rbsummit_steel": "rbsummit_steel/rbsummit_steel_chassis.stl",
+# "rbtheron": "rbtheron/theron_base_v4.stl",
+# "rbtheron_plus_top": "rbtheron/rbtheron_plus_top_chassis.stl",
+# "rbwatcher": "rbwatcher/rbwatcher_chassis.stl",
+# "rbvogui_xl": "rbvogui_xl/rbvogui_xl_chassis.stl",
 CHASSIS_MESH_PATH = os.path.join(
     BASE_PKG_DIR, "meshes/bases/rbkairos/rbkairos_chassis.stl"
 )
