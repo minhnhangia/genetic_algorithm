@@ -1,0 +1,22 @@
+{
+  "robots": {
+    "rbvogui_xl": {
+      "shard": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/footprints/_smoke/rbvogui_xl.npz",
+      "n_samples": 60
+    }
+  },
+  "params": {
+    "nodes_per_robot": 10,
+    "orientations_per_sensor": 2,
+    "seed": 0
+  },
+  "n_cells": 28800,
+  "ground_shape": [
+    60,
+    360
+  ],
+  "cyl_shape": [
+    20,
+    360
+  ]
+}

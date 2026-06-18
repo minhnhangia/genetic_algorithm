@@ -1,0 +1,50 @@
+{
+  "robots": {
+    "rbkairos": {
+      "shard": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/footprints/rbkairos.npz",
+      "n_samples": 2400
+    },
+    "rbrobout": {
+      "shard": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/footprints/rbrobout.npz",
+      "n_samples": 2400
+    },
+    "rbsummit_xl": {
+      "shard": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/footprints/rbsummit_xl.npz",
+      "n_samples": 2400
+    },
+    "rbsummit_steel": {
+      "shard": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/footprints/rbsummit_steel.npz",
+      "n_samples": 2400
+    },
+    "rbtheron": {
+      "shard": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/footprints/rbtheron.npz",
+      "n_samples": 2400
+    },
+    "rbtheron_plus_top": {
+      "shard": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/footprints/rbtheron_plus_top.npz",
+      "n_samples": 2400
+    },
+    "rbwatcher": {
+      "shard": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/footprints/rbwatcher.npz",
+      "n_samples": 2400
+    },
+    "rbvogui_xl": {
+      "shard": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/footprints/rbvogui_xl.npz",
+      "n_samples": 2400
+    }
+  },
+  "params": {
+    "nodes_per_robot": 200,
+    "orientations_per_sensor": 4,
+    "seed": 0
+  },
+  "n_cells": 28800,
+  "ground_shape": [
+    60,
+    360
+  ],
+  "cyl_shape": [
+    20,
+    360
+  ]
+}
