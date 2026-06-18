@@ -1,0 +1,50 @@
+{
+  "rbkairos": {
+    "mesh_path": "/home/saurab/genetic_algorithm_ws/ros2_ws/src/robotnik_description/meshes/bases/rbkairos/rbkairos_chassis.stl",
+    "graph_path": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/shapes/rbkairos/mounting_graph.pkl",
+    "n_nodes": 5093,
+    "n_edges": 49615
+  },
+  "rbrobout": {
+    "mesh_path": "/home/saurab/genetic_algorithm_ws/ros2_ws/src/robotnik_description/meshes/bases/rbrobout/rbrobout_top_cover.stl",
+    "graph_path": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/shapes/rbrobout/mounting_graph.pkl",
+    "n_nodes": 14408,
+    "n_edges": 222344
+  },
+  "rbsummit_xl": {
+    "mesh_path": "/home/saurab/genetic_algorithm_ws/ros2_ws/src/robotnik_description/meshes/bases/rbsummit/rbsummit_xl_chassis_simple.stl",
+    "graph_path": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/shapes/rbsummit_xl/mounting_graph.pkl",
+    "n_nodes": 16190,
+    "n_edges": 1748989
+  },
+  "rbsummit_steel": {
+    "mesh_path": "/home/saurab/genetic_algorithm_ws/ros2_ws/src/robotnik_description/meshes/bases/rbsummit_steel/rbsummit_steel_chassis.stl",
+    "graph_path": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/shapes/rbsummit_steel/mounting_graph.pkl",
+    "n_nodes": 19649,
+    "n_edges": 1053062
+  },
+  "rbtheron": {
+    "mesh_path": "/home/saurab/genetic_algorithm_ws/ros2_ws/src/robotnik_description/meshes/bases/rbtheron/theron_base_v4.stl",
+    "graph_path": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/shapes/rbtheron/mounting_graph.pkl",
+    "n_nodes": 8408,
+    "n_edges": 250277
+  },
+  "rbtheron_plus_top": {
+    "mesh_path": "/home/saurab/genetic_algorithm_ws/ros2_ws/src/robotnik_description/meshes/bases/rbtheron/rbtheron_plus_top_chassis.stl",
+    "graph_path": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/shapes/rbtheron_plus_top/mounting_graph.pkl",
+    "n_nodes": 22119,
+    "n_edges": 1006793
+  },
+  "rbwatcher": {
+    "mesh_path": "/home/saurab/genetic_algorithm_ws/ros2_ws/src/robotnik_description/meshes/bases/rbwatcher/rbwatcher_chassis.stl",
+    "graph_path": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/shapes/rbwatcher/mounting_graph.pkl",
+    "n_nodes": 4191,
+    "n_edges": 84336
+  },
+  "rbvogui_xl": {
+    "mesh_path": "/home/saurab/genetic_algorithm_ws/ros2_ws/src/robotnik_description/meshes/bases/rbvogui_xl/rbvogui_xl_chassis.stl",
+    "graph_path": "/home/saurab/genetic_algorithm_ws/genetic_algorithm/data/shapes/rbvogui_xl/mounting_graph.pkl",
+    "n_nodes": 18708,
+    "n_edges": 808187
+  }
+}

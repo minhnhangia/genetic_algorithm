@@ -39,7 +39,10 @@ def build_robot_surface() -> trimesh.Trimesh:
 
 
 def generate_ga_graph(
-    mesh: trimesh.Trimesh, point_count: int = 2000, neighbor_radius: float = 0.10
+    mesh: trimesh.Trimesh,
+    point_count: int = 2000,
+    neighbor_radius: float = 0.10,
+    curate: bool = True,
 ) -> tuple[nx.Graph, np.ndarray]:
     print(f"Sampling {point_count} points evenly across the robot surface...")
 
@@ -74,9 +77,14 @@ def generate_ga_graph(
     # OFFSET: Move points 5cm (0.05 meters) outward from the true exterior surface
     valid_points = valid_points + (valid_normals * 0.01)
 
-    filtered_points, filtered_normals = interactive_crop_points(
-        valid_points, valid_normals
-    )
+    if curate:
+        filtered_points, filtered_normals = interactive_crop_points(
+            valid_points, valid_normals
+        )
+    else:
+        # Batch / non-interactive: rely on the automated downward + internal-raycast
+        # filters above and skip the manual Open3D crop.
+        filtered_points, filtered_normals = valid_points, valid_normals
 
     print(f"Filtered down to {len(filtered_points)} valid mounting nodes.")
 
