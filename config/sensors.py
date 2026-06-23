@@ -74,4 +74,5 @@ SENSOR_CATALOG = {
         body_radius_m=0.050,
         body_height_m=0.030,
     ),
+    # TODO: add hemisphere (Livox, Robosense)
 }

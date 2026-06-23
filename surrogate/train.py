@@ -19,7 +19,7 @@ from torch_geometric.utils import to_undirected
 
 from .dataset import DEFAULT_OUT as DATA_DIR
 from .dataset import load_shard
-from .model import FootprintGNN, build_cell_coords, dice_bce_loss
+from .model import FootprintGNN, dice_bce_loss
 from . import shapes
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -94,8 +94,9 @@ def train(
     train_robots = [r for r in all_robots if r not in val_robots]
     print(f"train: {train_robots}\nval (held out): {val_robots}\ndevice: {DEVICE}\n")
 
-    cell_coords = build_cell_coords()
-    model = FootprintGNN(cell_coords).to(DEVICE)
+    ground_shape = tuple(manifest["ground_shape"])
+    cyl_shape = tuple(manifest["cyl_shape"])
+    model = FootprintGNN(ground_shape, cyl_shape).to(DEVICE)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
 
     train_data = [RobotData(r, n_cells) for r in train_robots]
@@ -121,12 +122,22 @@ def train(
                 total += loss.item()
                 nb += 1
         val = evaluate(model, val_data)
-        print(f"epoch {epoch:2d}  train_loss={total/nb:.4f}  "
-              f"val IoU={val['iou']:.3f}  F1={val['f1']:.3f}  "
-              f"cov_frac_MAE={val['cov_frac_mae']:.4f}")
+        print(
+            f"epoch {epoch:2d}  train_loss={total/nb:.4f}  "
+            f"val IoU={val['iou']:.3f}  F1={val['f1']:.3f}  "
+            f"cov_frac_MAE={val['cov_frac_mae']:.4f}"
+        )
 
     ckpt = pathlib.Path(__file__).resolve().parent.parent / "data" / "surrogate.pt"
-    torch.save({"state_dict": model.state_dict(), "val_robots": val_robots}, ckpt)
+    torch.save(
+        {
+            "state_dict": model.state_dict(),
+            "val_robots": val_robots,
+            "ground_shape": ground_shape,
+            "cyl_shape": cyl_shape,
+        },
+        ckpt,
+    )
     print(f"\nsaved {ckpt}")
 
 

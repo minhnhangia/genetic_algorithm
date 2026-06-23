@@ -52,11 +52,14 @@ def generate(
     rng = np.random.default_rng(seed)
     sensors = list(SENSOR_CATALOG.values())
 
-    manifest: dict = {"robots": {}, "params": {
-        "nodes_per_robot": nodes_per_robot,
-        "orientations_per_sensor": orientations_per_sensor,
-        "seed": seed,
-    }}
+    manifest: dict = {
+        "robots": {},
+        "params": {
+            "nodes_per_robot": nodes_per_robot,
+            "orientations_per_sensor": orientations_per_sensor,
+            "seed": seed,
+        },
+    }
 
     for name in robots:
         evaluator, graph = shapes.build_evaluator(name)
