@@ -24,6 +24,7 @@ from config.sensors import SENSOR_CATALOG
 from custom_toolbox.evaluate.scoring import FitnessScorer
 
 from .. import shapes
+from ..features import build_node_features
 from ..footprints import orientation_features, sample_orientation
 from ..model import load_surrogate
 
@@ -59,10 +60,9 @@ class RewardModel:
         """Load + encode a robot's graph once; reset the running layout."""
         graph = shapes.load_graph(name)
         n = graph.number_of_nodes()
-        pos = np.stack([graph.nodes[i]["pos"] for i in range(n)]).astype(np.float32)
-        nrm = np.stack([graph.nodes[i]["normal"] for i in range(n)]).astype(np.float32)
-        pos = pos - pos.mean(0, keepdims=True)
-        x = torch.tensor(np.concatenate([pos, nrm], axis=1), device=self.device)
+        # Match the surrogate's training-time feature contract (incl. scale-norm).
+        feats = build_node_features(graph, getattr(self.model, "scale_norm", False))
+        x = torch.tensor(feats, device=self.device)
         ei = torch.tensor(list(graph.edges()), dtype=torch.long).t().contiguous()
         ei = to_undirected(ei).to(self.device)
         with torch.no_grad():

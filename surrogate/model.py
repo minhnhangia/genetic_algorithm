@@ -134,11 +134,21 @@ def dice_bce_loss(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
 
 
 def load_surrogate(ckpt_path, device: str = "cpu"):
-    """Reconstruct a trained surrogate from a checkpoint (grid shapes stored in it)."""
+    """Reconstruct a trained surrogate from a checkpoint (grid shapes stored in it).
+
+    Architecture hyperparameters are read from the checkpoint's optional ``arch``
+    dict so higher-capacity variants load correctly; absent (older ckpts) -> the
+    FootprintGNN defaults, i.e. the original architecture.
+    """
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
-    model = FootprintGNN(tuple(ckpt["ground_shape"]), tuple(ckpt["cyl_shape"])).to(
-        device
-    )
+    arch = ckpt.get("arch", {})
+    model = FootprintGNN(
+        tuple(ckpt["ground_shape"]), tuple(ckpt["cyl_shape"]), **arch
+    ).to(device)
     model.load_state_dict(ckpt["state_dict"])
+    model.eval()
+    # Scale-normalisation flag travels with the model so the RL feature builder can
+    # match it (default False = original behaviour).
+    model.scale_norm = bool(ckpt.get("scale_norm", False))
     model.eval()
     return model, ckpt
