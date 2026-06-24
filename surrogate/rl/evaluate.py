@@ -68,20 +68,29 @@ def eval_policy(policy, env, robot, n_samples=30, seed=0):
     }
 
 
-def eval_greedy_true(robot, pool_size=100, seed=0):
+def eval_ceiling(robot, pool_size=100, seed=0, n_starts=40):
+    """True-verified classical ceiling on one raycast table: plain greedy AND the
+    honest baseline multi-start+LS (greedy is only a (1-1/e) lower bound)."""
+    from .reward import SENSOR_BY_TYPE
+    from .verify_ceiling import greedy, multistart_ls
+
     ev, g = shapes.build_evaluator(robot)
     pool = spread_nodes(g, pool_size, seed=seed)
     scorer = ev._scorer
     t0 = time.perf_counter()
     masks, cn, ct, co = build_true_table(ev, pool)  # raycast table (the cost)
-    sel = greedy_over_masks(masks, cn, ct, co, scorer, set(int(x) for x in pool))
+    prices = np.array([SENSOR_BY_TYPE[int(t)].price for t in ct], dtype=float)
+    g_rows, _ = greedy(masks, cn, prices, scorer)
+    o_rows, _ = multistart_ls(masks, cn, prices, scorer, n_starts, seed)
     t = time.perf_counter() - t0
-    layout = _layout_from_sel(sel)
-    return {
-        "fit": ev.evaluate_individual(layout)[0] if layout else 0.0,
-        "n": len(layout),
-        "t_infer": t,
-    }
+
+    def _verify(rows):
+        lay = _layout_from_sel([(int(cn[i]), int(ct[i]) - 1, int(co[i])) for i in rows])
+        return (ev.evaluate_individual(lay)[0] if lay else 0.0), len(lay)
+
+    g_fit, _ = _verify(g_rows)
+    o_fit, o_n = _verify(o_rows)
+    return {"greedy": g_fit, "optimum": o_fit, "n_opt": o_n, "t_infer": t}
 
 
 def eval_greedy_surrogate(robot, rm, pool_size=100, seed=0):
@@ -113,21 +122,21 @@ if __name__ == "__main__":
     env = PlacementEnv(rm)
 
     hdr = (
-        f"{'robot':16s} {'policy(greedy)':>14s} {'policy(sample mu±ci)':>22s} "
-        f"{'greedy_sur':>11s} {'greedy_true':>12s} | "
-        f"{'t_pol':>7s} {'t_sur':>7s} {'t_true':>7s}"
+        f"{'robot':16s} {'policy(bestN)':>13s} {'greedy_sur':>11s} "
+        f"{'greedy_true':>12s} {'OPT(ms+LS)':>11s} | "
+        f"{'t_pol':>7s} {'t_sur':>7s} {'t_opt':>7s}"
     )
     print(hdr)
     print("-" * len(hdr))
     for r in held:
         p = eval_policy(policy, env, r)
         gs = eval_greedy_surrogate(r, rm)
-        gt = eval_greedy_true(r)
-        gap = p["greedy"] / gt["fit"] if gt["fit"] > 0 else float("nan")
+        c = eval_ceiling(r)  # greedy + honest multi-start+LS ceiling
+        pol = p["sample_best"]  # best-of-N (true-verified)
+        gap = pol / c["optimum"] if c["optimum"] > 0 else float("nan")
         print(
-            f"{r:16s} {p['greedy']:14.4f} "
-            f"{p['sample_mean']:.4f}±{p['sample_ci']:.4f}{'':>6s} "
-            f"{gs['fit']:11.4f} {gt['fit']:12.4f} | "
-            f"{p['t_infer']:6.2f}s {gs['t_infer']:6.2f}s {gt['t_infer']:6.2f}s "
-            f"  [gap {gap*100:.0f}% of ceiling]"
+            f"{r:16s} {pol:13.4f} {gs['fit']:11.4f} "
+            f"{c['greedy']:12.4f} {c['optimum']:11.4f} | "
+            f"{p['t_infer']:6.2f}s {gs['t_infer']:6.2f}s {c['t_infer']:6.2f}s "
+            f"  [policy {gap*100:.0f}% of OPT]"
         )

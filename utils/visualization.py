@@ -86,6 +86,8 @@ def visualize_best_layout(
     individual: Individual,
     evaluator=None,
     *,
+    mounting_graph=None,
+    mesh=None,
     show_rays: bool = True,
     show_ground: bool = True,
     show_cyl: bool = True,
@@ -93,7 +95,8 @@ def visualize_best_layout(
     show_arrows: bool = False,
     max_rays_per_sensor: int = 200,
     include_misses: bool = False,
-) -> None:
+    return_scene: bool = False,
+):
     """Render the best sensor layout with its ray-cast coverage in a 3D viewer.
 
     Overlaid on the (semi-transparent) robot mesh:
@@ -122,10 +125,16 @@ def visualize_best_layout(
     from trimesh.path.entities import Line
     from IPython.display import display
 
-    from config.graph import MOUNTING_GRAPH
-    from generate_mounting_graph import build_robot_surface
     from custom_toolbox.evaluate.evaluate_fitness_raycast import CoverageEvaluator
     from custom_toolbox.evaluate.sensor_body import sensor_body_mesh
+
+    # Fleet robots pass their own graph + mesh; fall back to the global single
+    # robot only when neither is supplied (keeps the GA notebook usage unchanged).
+    if mounting_graph is None:
+        from config.graph import MOUNTING_GRAPH as mounting_graph
+    if mesh is None:
+        from generate_mounting_graph import build_robot_surface
+        mesh = build_robot_surface()
 
     # Sensor type → RGBA (matches the HTML table colors)
     SENSOR_COLORS: dict[SensorType, list[int]] = {
@@ -156,7 +165,7 @@ def visualize_best_layout(
         f"fitness={debug['fitness']:.4f}):"
     )
     for i, gene in enumerate(individual, 1):
-        pos = MOUNTING_GRAPH.nodes[gene.node_id]["pos"]
+        pos = mounting_graph.nodes[gene.node_id]["pos"]
         print(
             f"  [{i}] {gene.sensor.sensor_type.name:<14} "
             f"node={gene.node_id:>4}  "
@@ -170,7 +179,6 @@ def visualize_best_layout(
         f"S_cyl={len(cyl_pts)} cells (blue)"
     )
 
-    mesh = build_robot_surface()
     mesh.visual.face_colors = [110, 110, 110, 80]
 
     scene_items: list = [mesh]
@@ -219,7 +227,7 @@ def visualize_best_layout(
         scene_items.append(domain_path)
 
     for gene in individual:
-        node = MOUNTING_GRAPH.nodes[gene.node_id]
+        node = mounting_graph.nodes[gene.node_id]
         pos = np.array(node["pos"], dtype=float)
         color = SENSOR_COLORS.get(gene.sensor.sensor_type, [200, 200, 200, 230])
 
@@ -282,6 +290,8 @@ def visualize_best_layout(
             scene_items.append(rays_path)
 
     scene = trimesh.Scene(scene_items)
+    if return_scene:  # headless callers export/snapshot instead of launching GL
+        return scene
     print("\nRendering 3D viewer inline...")
 
     # Force the GL viewer and explicitly display it in the cell
