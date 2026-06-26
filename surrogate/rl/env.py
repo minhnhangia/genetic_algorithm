@@ -40,6 +40,11 @@ class Obs:
     node_emb: torch.Tensor  # (N, H) frozen surrogate embeddings
     used_mask: torch.Tensor  # (N,) bool, True where a sensor already sits
     n_placed: int
+    # Phase-1 coverage-aware fields (None for the original coverage-blind policy).
+    # When set, node_emb is the POOL's embeddings (P,H), node action = pool index,
+    # and the policy conditions on running coverage + per-node marginal gain.
+    coverage_frac: float = 0.0
+    node_gains: torch.Tensor | None = None  # (P,) per-pool-node max marginal gain
 
 
 @dataclass

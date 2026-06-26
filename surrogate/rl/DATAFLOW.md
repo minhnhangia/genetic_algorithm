@@ -1,98 +1,100 @@
-# DRL placement — data-flow diagrams
+# DRL placement — data-flow (current pipeline)
 
-Mermaid diagrams for the cross-robot zero-shot LiDAR placement RL. Renders in GitHub
-and in VSCode (Markdown Preview Mermaid Support).
+**Mental model:** one GNN policy places ≤4 LiDARs on an *unseen* robot in a few fast
+rollouts. It learns by imitating a greedy expert, then refines with RL. Everything is
+scored against the **real raycaster**. Renders in VS Code (Markdown Preview Mermaid).
 
-## 1. System map — where everything lives
-
-```mermaid
-flowchart TD
-    subgraph OFFLINE["Offline assets (on disk)"]
-        G["data/shapes — mesh + mounting graph"]
-        S["data/surrogate.pt — FootprintGNN"]
-        T["data/true_tables — raycast footprint tables"]
-    end
-
-    G --> SH["shapes.py — robot library"]
-    S --> MO["model.py — GNN encode / decode"]
-    T --> BT["bc_true.py — true-greedy teacher"]
-
-    SH --> RM["reward.py — RewardModel"]
-    MO --> RM
-    MO --> POL["policy.py — PlacementPolicy"]
-
-    RM -->|"Obs: frozen node_emb"| ENV["env.py — PlacementEnv"]
-    ENV -->|"Obs"| POL
-    POL -->|"Action"| ENV
-
-    BT --> DEMO["BC demos: state to action"]
-    BC["bc.py — surrogate-greedy teacher"] --> DEMO
-    DEMO --> BCP["bc_pretrain — copy expert"]
-    BCP -->|"init_policy"| POL
-
-    ENV -->|"rollouts + reward"| PPO["train_ppo.py — PPO"]
-    PPO -->|"update"| POL
-
-    POL --> EV["evaluate.py / kfold.py"]
-    EV -->|"true-verified"| RAY["CoverageEvaluator (real raycaster)"]
-```
-
-## 2. One episode — the inner loop
-
-```mermaid
-flowchart TD
-    R["env.reset(robot)"] --> ENC["RewardModel.set_robot:<br/>graph --encode_graph(GNN)--> node_emb (N x 128)<br/>(computed once per robot)"]
-    ENC --> OBS["Obs = node_emb, used_mask, n_placed"]
-
-    OBS --> ACT["policy.act:<br/>pointer over nodes (mask used)<br/>then type, then orient<br/>(STOP forbidden if n_placed = 0)"]
-    ACT --> STEP["env.step(Action)"]
-
-    STEP --> DEC["RewardModel.step:<br/>decode footprint, OR into union<br/>(surrogate — no raycast)"]
-    DEC --> UPD["used_mask[node]=True; n_placed += 1"]
-
-    UPD --> DONE{"done? STOP or 4 sensors"}
-    DONE -->|"no: reward = 0"| OBS
-    DONE -->|"yes"| TERM["reward = fitness(union, cost)<br/>surrogate, or TRUE raycast if true_reward"]
-    TERM --> OUT["layout -> scored by real raycaster for reporting"]
-```
-
-## 3. Training recipe — why two stages
-
-```mermaid
-flowchart TD
-    subgraph P1["Phase 1 - Behavior Cloning (copy the expert)"]
-        EXP["greedy expert<br/>surrogate OR true footprints"] --> D["demos: state to action"]
-        D --> BCP["bc_pretrain (minimize cross-entropy)"]
-        BCP --> COMP["policy starts COMPETENT (not random)"]
-    end
-
-    COMP -->|"init_policy"| RO
-
-    subgraph P2["Phase 2 - PPO (improve by trial and error)"]
-        RO["rollouts on TRAIN robots"] --> RW["rewards"]
-        RW --> UP["ppo_update (nudge policy)"]
-        UP --> RO
-        UP --> HO["greedy rollout on HELD-OUT robots<br/>scored by REAL raycaster"]
-    end
-
-    NOTE["Winning combo: teacher = TRUE and reward = TRUE (must agree)"]
-    HO --> NOTE
-```
+## 1. Whole pipeline (offline → train → deploy → score)
 
 ```mermaid
 flowchart LR
-    A["PPO from scratch"] --> B["random play -> reward ~ 0 everywhere"]
-    B --> C["no gradient -> stuck at 0"]
-    D["PPO from BC"] --> E["starts near good layouts"]
-    E --> F["reward gradient exists -> improves"]
+  subgraph OFF["Offline (built once)"]
+    G["robot graphs + meshes (shapes.py)"]
+    S["surrogate.pt — GNN, IoU 0.54"]
+    T["true footprint tables (cached raycast)"]
+    O["OPT layouts — multi-start+LS (the ceiling)"]
+  end
+  OFF --> TR["TRAIN per fold:<br/>BC(greedy-on-true) then PPO(true reward)"]
+  TR --> POL["trained policy<br/>(held-out robots = zero-shot)"]
+  POL --> INF["INFER: best-of-N + verify-and-fallback"]
+  INF --> EVAL["EVAL vs OPT (true-verified, multi-seed)"]
 ```
 
-## 4. Shapes flowing through the networks
+## 2. Training — how the policy learns
+
+```mermaid
+flowchart TD
+  subgraph BC["1) Behaviour cloning (warm start)"]
+    TT["true footprint table"] --> GT["greedy-on-TRUE teacher"]
+    GT --> D["demos: state to action"]
+    D --> CLONE["clone via cross-entropy"]
+  end
+  CLONE -->|"init policy"| RO
+  subgraph PPO["2) PPO (refine)"]
+    RO["rollouts on TRAIN robots"] --> RW["TRUE terminal reward (raycast):<br/>0.7*coverage - 0.3*cost, unclamped"]
+    RW --> UP["update policy"]
+    UP --> RO
+    UP --> H["greedy rollout on HELD-OUT robots<br/>(zero-shot, true-verified)"]
+  end
+```
+
+The **reward is the real raycaster**, not the surrogate. PPO-from-scratch fails, so BC
+warms it up; teacher and reward both use TRUE coverage (they must agree).
+
+## 3. One episode + inference (best-of-N + fallback)
+
+```mermaid
+flowchart TD
+  R["reset(robot): GNN encode ONCE"] --> LOOP["place a sensor (<=4):<br/>node -> type -> orient, or STOP"]
+  LOOP --> LOOP
+  LOOP --> LAY["a layout"]
+  LAY --> BON["best-of-N: greedy + 16 sampled rollouts"]
+  BON --> VER["true-verify each (raycast), keep best"]
+  VER --> CHK{"best &lt; 0.05 ? (collapse)"}
+  CHK -->|"no"| OUT["final layout"]
+  CHK -->|"yes"| FB["fallback: greedy-on-surrogate,<br/>true-verify, keep better"]
+  FB --> OUT
+```
+
+best-of-N fixes the policy's peakiness (good layouts are in its distribution; greedy
+decoding misses them); the fallback is a cheap safety net for rare collapses.
+
+## 4. What the policy SEES (coverage-aware observation)
 
 ```mermaid
 flowchart LR
-    X["x: (N,6) pos+normal<br/>edges: (2,E)"] --> GNN["GNN encode_graph<br/>3x SAGEConv"]
-    GNN --> EMB["node_emb (N,128)<br/>FROZEN, shared"]
-    EMB --> RPATH["REWARD path - decode:<br/>node_emb[i] + sensor_emb + orient<br/>-> footprint (28800,)"]
-    EMB --> PPATH["POLICY heads:<br/>node ptr (N), stop (1),<br/>type (3), orient (18), value (1)"]
+  EMB["frozen GNN node embeddings<br/>(pool of 100 candidate nodes)"] --> POL
+  USED["used-node mask + n_placed"] --> POL
+  COV["running coverage_frac"] --> POL
+  GAIN["per-node MARGINAL GAIN<br/>(surrogate decoder vs current coverage)"] --> POL
+  POL["policy heads:<br/>node/STOP, type, orient, value"]
 ```
+
+`coverage_frac` + `marginal_gain` are **state features** (what greedy sees) — they are
+*inputs*, NOT the reward. This gives marginal-reasoning info without making a noisy
+signal the reward.
+
+## 5. Evaluation — the honest ceiling
+
+```mermaid
+flowchart LR
+  P["policy (best-of-N)"] --> CMP
+  GS["greedy-on-surrogate"] --> CMP
+  GT["greedy-on-true"] --> CMP
+  OP["OPT = multi-start + local-search<br/>(true optimum, NOT greedy)"] --> CMP
+  CMP["true-verify all -> report % of OPT,<br/>mean +/- CI over seeds x robots"]
+```
+
+Numbers: fleet **OPT ≈ 0.316**; policy best-of-N ≈ **0.240 (~76% of OPT)**. Greedy is
+**not** the ceiling — OPT beats greedy by 9–24%.
+
+---
+
+## The surrogate's THREE roles (and one non-role)
+
+| role | where | uses |
+|---|---|---|
+| **Perception** | policy input | frozen GNN node embeddings (encoder) |
+| **Marginal-gain feature** | coverage-aware obs | decoder predicts footprints → per-node gain |
+| **Fallback proposer** | inference | greedy-on-surrogate when the policy collapses |
+| ~~Reward~~ | — | **NOT used** — reward is the true raycaster |

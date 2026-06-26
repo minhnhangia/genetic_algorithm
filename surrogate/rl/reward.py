@@ -119,6 +119,50 @@ class RewardModel:
             out.append((torch.sigmoid(logits) > self.threshold).cpu().numpy())
         return np.concatenate(out, axis=0)
 
+    # --- Phase 1: coverage-aware state (cached candidate table + marginal gains) ---
+    @torch.no_grad()
+    def build_candidate_cache(self, node_pool) -> int:
+        """Decode + cache surrogate footprints for ``pool x 3 types x ORIENT_BINS`` once.
+
+        Stores ``self.cand_masks`` (M, n_cells) bool on-device + node-major ordering
+        (per node: all 3*len(ORIENT_BINS) poses consecutive), so per-step marginal
+        coverage gains are cheap masked sums with NO re-decode. M = |pool|*3*|ORIENT_BINS|.
+        """
+        from .env import ORIENT_BINS  # local: env imports reward (avoid module-load cycle)
+
+        self.pool = np.asarray([int(n) for n in node_pool])
+        self.n_poses = 3 * len(ORIENT_BINS)
+        nodes, types, oris, obins = [], [], [], []
+        for n in self.pool:
+            for t in (1, 2, 3):
+                for oi, (p, r, y) in enumerate(ORIENT_BINS):
+                    nodes.append(int(n)); types.append(t); oris.append((p, r, y)); obins.append(oi)
+        masks = self.predict_masks_batch(np.asarray(nodes), np.asarray(types), oris)
+        self.cand_node = np.asarray(nodes)
+        self.cand_type = np.asarray(types)
+        self.cand_orient = np.asarray(obins)
+        self.cand_masks = torch.as_tensor(masks, device=self.device)  # bool (M, n_cells)
+        return self.cand_masks.shape[0]
+
+    @torch.no_grad()
+    def candidate_gains(self, union_bool, chunk: int = 2048) -> torch.Tensor:
+        """Marginal new-coverage fraction for EVERY cached candidate vs ``union``.
+
+        Returns ``(M,)`` float in [0,1]; chunked to bound transient memory.
+        """
+        union = torch.as_tensor(union_bool, device=self.device, dtype=torch.bool)
+        m = self.cand_masks.shape[0]
+        gains = torch.empty(m, device=self.device)
+        for s in range(0, m, chunk):
+            sl = slice(s, s + chunk)
+            gains[sl] = (self.cand_masks[sl] & ~union).sum(1).float() / self.n_cells
+        return gains
+
+    @torch.no_grad()
+    def node_marginal_gains(self, union_bool) -> torch.Tensor:
+        """Per-pool-node max marginal gain (over its poses) given ``union`` -> ``(|pool|,)``."""
+        return self.candidate_gains(union_bool).view(len(self.pool), self.n_poses).amax(1)
+
     def terminal_reward(self) -> float:
         """Dense (unclamped) layout fitness for RL: ``w_cov*cov_frac - w_cost*cost_frac``.
 
