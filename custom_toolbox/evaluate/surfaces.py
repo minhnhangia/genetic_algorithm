@@ -103,7 +103,11 @@ class GroundDisk(EvaluationSurface):
         dz = D[:, 2]
         with np.errstate(divide="ignore", invalid="ignore"):
             t = -O[:, 2] / dz
-        valid = (dz != 0.0) & (t > EPS) & (t < t_hit) & (t < ranges)
+        # One-sided opaque floor: only downward rays (dz < 0) descending from
+        # above can strike the ground's top face. This rejects rays that would
+        # pierce z = 0 from below -- e.g. a sub-floor sensor (mount z < 0) whose
+        # upward rays would otherwise be credited with spurious ground coverage.
+        valid = (dz < 0.0) & (t > EPS) & (t < t_hit) & (t < ranges)
         return valid, t
 
     def mark(self, O, D, valid, t, grid):
@@ -172,6 +176,15 @@ class CylinderWall(EvaluationSurface):
         t = np.minimum(t1p, t2p)
 
         valid = solvable & np.isfinite(t) & (t < t_hit) & (t < ranges)
+
+        # Opaque floor occluder: a ray that crosses z = 0 before reaching the wall
+        # is blocked by the floor (e.g. a sub-floor sensor's upward rays piercing
+        # the floor on their way out to R_max). Reject those wall hits.
+        dz = D[:, 2]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t_floor = np.where(dz != 0.0, -O[:, 2] / dz, np.inf)
+        crosses_floor = (t_floor > EPS) & (t_floor < t)
+        valid = valid & ~crosses_floor
         return valid, t
 
     def mark(self, O, D, valid, t, grid):

@@ -20,18 +20,27 @@ from .reward import RewardModel
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def spread_nodes(graph, k: int, seed: int = 0) -> list[int]:
-    """Farthest-point sample ``k`` node ids by position (Euclidean spread)."""
+def spread_nodes(graph, k: int, seed: int = 0, min_z: float = 0.0) -> list[int]:
+    """Farthest-point sample ``k`` node ids by position (Euclidean spread).
+
+    Nodes below ``min_z`` (the ground plane) are excluded: a sub-floor mount is
+    physically invalid (chassis below the floor) and the evaluator's one-sided
+    opaque floor scores it ~0, so it must not enter the candidate pool.
+    """
     n = graph.number_of_nodes()
     pos = np.stack([graph.nodes[i]["pos"] for i in range(n)]).astype(np.float32)
+    eligible = np.nonzero(pos[:, 2] >= min_z)[0]
+    if len(eligible) == 0:  # degenerate fallback (no robot hits this)
+        eligible = np.arange(n)
+    epos = pos[eligible]
     rng = np.random.default_rng(seed)
-    chosen = [int(rng.integers(n))]
-    d = np.linalg.norm(pos - pos[chosen[0]], axis=1)
-    while len(chosen) < min(k, n):
+    chosen = [int(rng.integers(len(eligible)))]
+    d = np.linalg.norm(epos - epos[chosen[0]], axis=1)
+    while len(chosen) < min(k, len(eligible)):
         i = int(d.argmax())
         chosen.append(i)
-        d = np.minimum(d, np.linalg.norm(pos - pos[i], axis=1))
-    return chosen
+        d = np.minimum(d, np.linalg.norm(epos - epos[i], axis=1))
+    return [int(eligible[i]) for i in chosen]
 
 
 def greedy_true_fit(evaluator, node_ids) -> float:

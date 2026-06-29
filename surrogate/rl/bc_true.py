@@ -83,14 +83,19 @@ def greedy_over_masks(
 _TABLE_DIR = shapes.SHAPES_DIR.parent / "true_tables"
 
 
+_TABLE_TAG = "ff"  # floor-fix: one-sided opaque floor + z>=0 candidate pool
+
+
 def cached_true_table(robot, pool_size=100, seed=0):
     """Build (or load from disk) a robot's true footprint table; fold-independent.
 
     The filename encodes the orientation-grid size so changing ``ORIENT_BINS``
     invalidates stale tables (their ``co`` indices would point at the wrong pose).
+    ``_TABLE_TAG`` further invalidates tables when the scoring/pool semantics change
+    (here: the one-sided opaque floor + sub-floor node exclusion).
     """
     _TABLE_DIR.mkdir(exist_ok=True)
-    path = _TABLE_DIR / f"{robot}_p{pool_size}_o{len(ORIENT_BINS)}_s{seed}.npz"
+    path = _TABLE_DIR / f"{robot}_p{pool_size}_o{len(ORIENT_BINS)}_s{seed}_{_TABLE_TAG}.npz"
     if path.exists():
         z = np.load(path)
         n_cells = int(z["n_cells"])
